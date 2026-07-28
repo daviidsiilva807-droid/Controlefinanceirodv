@@ -1,0 +1,128 @@
+@import 'tailwindcss';
+
+/* Tema controlado por classe no <html>, não pela preferência do sistema:
+   a pessoa escolhe claro/escuro nas Configurações e a escolha persiste. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  --color-brand-50: #ecfdf5;
+  --color-brand-100: #d1fae5;
+  --color-brand-200: #a7f3d0;
+  --color-brand-300: #6ee7b7;
+  --color-brand-400: #34d399;
+  --color-brand-500: #10b981;
+  --color-brand-600: #059669;
+  --color-brand-700: #047857;
+  --color-brand-800: #065f46;
+  --color-brand-900: #064e3b;
+
+  --font-sans: 'Inter var', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto,
+    'Helvetica Neue', Arial, sans-serif;
+
+  /* Tabular para os valores em R$ — sem isso os números "dançam" na lista
+     de lançamentos, porque cada dígito tem largura diferente. */
+  --font-mono: ui-monospace, 'SF Mono', 'Cascadia Mono', Menlo, monospace;
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
+    /* Impede o "puxar para atualizar" e o bounce do iOS, que num app
+       instalado na tela inicial parece bug. */
+    overscroll-behavior-y: none;
+  }
+
+  /* Some com as setinhas dos inputs numéricos. */
+  input[type='number']::-webkit-outer-spin-button,
+  input[type='number']::-webkit-inner-spin-button {
+    -webkit-appearance: none;
+    margin: 0;
+  }
+
+  input[type='number'] {
+    -moz-appearance: textfield;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+}
+
+@layer utilities {
+  /* Safe areas do iPhone (notch e barra inferior). Sem isso a bottom nav
+     fica embaixo do indicador de home. */
+  .pt-safe {
+    padding-top: env(safe-area-inset-top, 0px);
+  }
+  .pb-safe {
+    padding-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .mb-safe {
+    margin-bottom: env(safe-area-inset-bottom, 0px);
+  }
+  .h-safe-bottom {
+    height: env(safe-area-inset-bottom, 0px);
+  }
+
+  .tabular {
+    font-variant-numeric: tabular-nums;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+/* ------------------------------------------------------------ animações */
+
+@keyframes sheet-up {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes shake {
+  10%, 90% { transform: translateX(-2px); }
+  20%, 80% { transform: translateX(4px); }
+  30%, 50%, 70% { transform: translateX(-6px); }
+  40%, 60% { transform: translateX(6px); }
+}
+
+.animate-sheet-up {
+  animation: sheet-up 0.26s cubic-bezier(0.32, 0.72, 0, 1);
+}
+.animate-fade-in {
+  animation: fade-in 0.18s ease-out;
+}
+.animate-shake {
+  animation: shake 0.4s;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-sheet-up,
+  .animate-fade-in,
+  .animate-shake {
+    animation: none;
+  }
+}
