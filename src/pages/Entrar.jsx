@@ -1,6 +1,6 @@
 import { useState } from 'react'
 import { Aviso, Botao, Campo, Cartao, Entrada } from '../components/ui'
-import { mensagemDeErro, supabase } from '../lib/supabase'
+import { mensagemDeErro } from '../lib/supabase'
 import { useAuth } from '../store/authStore'
 
 export function Entrar() {
@@ -8,29 +8,12 @@ export function Entrar() {
   const [email, setEmail] = useState('')
   const [senha, setSenha] = useState('')
   const [nome, setNome] = useState('')
-  const [codigo, setCodigo] = useState('')
-  const [nomeDaCasa, setNomeDaCasa] = useState(null)
   const [erro, setErro] = useState(null)
   const [aviso, setAviso] = useState(null)
   const [enviando, setEnviando] = useState(false)
 
   const entrar = useAuth((s) => s.entrar)
   const cadastrar = useAuth((s) => s.cadastrar)
-
-  /**
-   * Confere o código de convite ANTES do cadastro. O trigger no banco ignora
-   * código inválido de propósito (uma exceção lá viraria "Database error
-   * saving new user"), então a validação amigável precisa acontecer aqui.
-   */
-  const conferirCodigo = async (valor) => {
-    const limpo = valor.trim().toUpperCase()
-    setCodigo(limpo)
-    setNomeDaCasa(null)
-    if (limpo.length !== 6) return
-
-    const { data } = await supabase.rpc('household_name_for_code', { p_code: limpo })
-    setNomeDaCasa(data ?? false)
-  }
 
   const enviar = async (e) => {
     e.preventDefault()
@@ -42,14 +25,10 @@ export function Entrar() {
       if (modo === 'entrar') {
         await entrar(email.trim(), senha)
       } else {
-        if (codigo && nomeDaCasa === false) {
-          throw new Error('CODIGO_INVALIDO')
-        }
         const { precisaConfirmarEmail } = await cadastrar({
           email: email.trim(),
           senha,
           nome: nome.trim(),
-          codigoConvite: codigo,
         })
         if (precisaConfirmarEmail) {
           setAviso('Conta criada. Confirme o e-mail que enviamos e depois entre por aqui.')
@@ -115,35 +94,6 @@ export function Entrar() {
             />
           </Campo>
 
-          {cadastrando && (
-            <Campo
-              rotulo="Código de convite (opcional)"
-              dica={
-                nomeDaCasa === null
-                  ? 'Se alguém já usa o app e quer dividir os lançamentos com você, peça o código.'
-                  : undefined
-              }
-              erro={nomeDaCasa === false ? 'Código não encontrado.' : undefined}
-            >
-              <Entrada
-                value={codigo}
-                onChange={(e) => conferirCodigo(e.target.value)}
-                placeholder="A7K2M9"
-                maxLength={6}
-                // Código é sempre maiúsculo; sem isso o teclado do celular
-                // sugere minúsculas e a pessoa acha que errou.
-                className="tabular uppercase tracking-widest"
-                autoCapitalize="characters"
-                autoCorrect="off"
-              />
-              {nomeDaCasa && (
-                <span className="mt-1 block text-xs text-brand-600 dark:text-brand-400">
-                  ✓ Você vai entrar em “{nomeDaCasa}”.
-                </span>
-              )}
-            </Campo>
-          )}
-
           {erro && <Aviso tipo="erro">{erro}</Aviso>}
           {aviso && <Aviso tipo="info">{aviso}</Aviso>}
 
@@ -152,6 +102,15 @@ export function Entrar() {
           </Botao>
         </form>
       </Cartao>
+
+      {/* Sem código de convite: cada conta é isolada e não existe forma de
+          juntar duas pessoas nos mesmos dados. */}
+      {cadastrando && (
+        <p className="px-2 text-center text-xs text-slate-500 dark:text-slate-400">
+          Seus lançamentos são só seus. Nenhum outro usuário do app — nem o administrador — consegue
+          ver seus valores.
+        </p>
+      )}
 
       <button
         onClick={() => {

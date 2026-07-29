@@ -5,12 +5,12 @@ import { inicioMesISO, mesDaChave, subMonths } from '../lib/dates'
 
 /** Orçamentos (limites por categoria) de um mês. */
 export function useOrcamentos(chave) {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const [orcamentos, setOrcamentos] = useState([])
   const [carregando, setCarregando] = useState(true)
 
   const buscar = useCallback(async () => {
-    if (!casaId || !chave) return
+    if (!userId || !chave) return
     setCarregando(true)
     const { data, error } = await supabase
       .from('budgets')
@@ -19,7 +19,7 @@ export function useOrcamentos(chave) {
 
     if (!error) setOrcamentos(data ?? [])
     setCarregando(false)
-  }, [casaId, chave])
+  }, [userId, chave])
 
   useEffect(() => {
     buscar()
@@ -46,7 +46,7 @@ export function useOrcamentos(chave) {
           .from('budgets')
           .upsert(
             { category_id: categoriaId, month: mes, limit_cents: limiteCents },
-            { onConflict: 'household_id,category_id,month' }
+            { onConflict: 'user_id,category_id,month' }
           )
         if (error) throw error
       }
@@ -74,7 +74,7 @@ export function useOrcamentos(chave) {
     const mes = inicioMesISO(mesAtual)
     const { error: erroInsert } = await supabase.from('budgets').upsert(
       data.map((o) => ({ category_id: o.category_id, month: mes, limit_cents: o.limit_cents })),
-      { onConflict: 'household_id,category_id,month' }
+      { onConflict: 'user_id,category_id,month' }
     )
     if (erroInsert) throw erroInsert
 

@@ -1,14 +1,17 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { assinarTabela } from '../lib/realtime'
 import { useAuth } from '../store/authStore'
 import { dividirParcelas } from '../lib/money'
 import { addMonths, fimMesISO, inicioMesISO, mesDaChave, toISODate } from '../lib/dates'
 
+// Sem `created_by`: com contas isoladas, todo lançamento é de quem está
+// logado — registrar o autor não diria nada.
 const SELECT = `
   id, kind, amount_cents, description, date, paid, invoice_month,
   account_id, category_id, transfer_account_id,
   installment_group_id, installment_no, installment_total, recurring_rule_id,
-  created_by, created_at,
+  created_at,
   categories ( id, name, icon, color, kind ),
   accounts!transactions_account_id_fkey ( id, name, icon, color, type )
 `
@@ -17,18 +20,18 @@ const SELECT = `
  * Lançamentos de um mês (pela DATA do lançamento — a fatura do cartão é outra
  * visão, veja useFatura).
  *
- * Assina realtime porque duas pessoas usam o mesmo app: quando um lança o
- * mercado, o outro vê aparecer sem precisar puxar a tela.
+ * Assina realtime para o app se atualizar sozinho quando você lança de outro
+ * aparelho — o mesmo usuário no celular e no computador.
  */
 export function useTransacoes(chave) {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const [transacoes, setTransacoes] = useState([])
   const [carregando, setCarregando] = useState(true)
   const [erro, setErro] = useState(null)
   const requisicaoAtual = useRef(0)
 
   const buscar = useCallback(async () => {
-    if (!casaId || !chave) return
+    if (!userId || !chave) return
     const id = ++requisicaoAtual.current
     setCarregando(true)
 
@@ -51,26 +54,16 @@ export function useTransacoes(chave) {
       setErro(null)
     }
     setCarregando(false)
-  }, [casaId, chave])
+  }, [userId, chave])
 
   useEffect(() => {
     buscar()
   }, [buscar])
 
-  useEffect(() => {
-    if (!casaId) return
-    const canal = supabase
-      .channel(`transacoes:${casaId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions', filter: `household_id=eq.${casaId}` },
-        () => buscar()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(canal)
-    }
-  }, [casaId, buscar])
+  useEffect(
+    () => assinarTabela({ tabela: 'transactions', coluna: 'user_id', valor: userId, aoMudar: buscar }),
+    [userId, buscar]
+  )
 
   return { transacoes, carregando, erro, recarregar: buscar }
 }

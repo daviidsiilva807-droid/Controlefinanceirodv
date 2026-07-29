@@ -2,119 +2,48 @@
 --  Controle Financeiro — 01: tabelas, índices e restrições
 --  Rode este arquivo primeiro, no SQL Editor do Supabase.
 --
+--  MODELO: cada conta é uma ilha. Todo dado financeiro pertence a UM
+--  usuário (`user_id`) e ninguém mais enxerga — nem outro usuário, nem o
+--  administrador. Não existe compartilhamento entre contas.
+--
 --  Convenção de dinheiro: TODO valor é gravado em CENTAVOS INTEIROS
---  (bigint). Nunca usamos float/numeric para dinheiro — em JavaScript
---  0.1 + 0.2 = 0.30000000000000004, e num app financeiro isso vira erro
---  de centavos acumulado nos relatórios. A formatação em R$ acontece só
---  na hora de exibir.
+--  (bigint). Nunca float/numeric — em JavaScript 0.1 + 0.2 dá
+--  0.30000000000000004, e num app financeiro isso vira erro de centavos
+--  acumulado no relatório. A formatação em R$ acontece só ao exibir.
 -- =====================================================================
 
 create extension if not exists pgcrypto;
 
 -- ---------------------------------------------------------------- pessoas
 
+-- `role` decide o que a pessoa vê no app:
+--   'user'  → só os próprios dados;
+--   'admin' → a lista de usuários e o envio de mensagens. O admin NÃO
+--             enxerga lançamento, saldo nem orçamento de ninguém; isso é
+--             garantido pelas policies em 03_rls.sql, não pela interface.
+--
+-- `email` é copiado de auth.users pelo gatilho de cadastro porque o client
+-- não tem acesso ao schema `auth` — sem esta cópia, a lista do admin não
+-- teria como identificar as pessoas.
 create table public.profiles (
   id           uuid primary key references auth.users (id) on delete cascade,
   display_name text        not null default 'Você',
+  email        text,
   emoji        text        not null default '🙂',
+  role         text        not null default 'user' check (role in ('user', 'admin')),
   created_at   timestamptz not null default now()
 );
 
-comment on table public.profiles is 'Dados públicos do usuário, visíveis para quem divide a mesma casa.';
-
--- "Casa" = o grupo que compartilha os lançamentos (você e mais uma pessoa).
-create table public.households (
-  id          uuid primary key default gen_random_uuid(),
-  name        text        not null default 'Minha casa',
-  invite_code text        not null unique,
-  created_at  timestamptz not null default now()
-);
-
-create table public.household_members (
-  household_id uuid        not null references public.households (id) on delete cascade,
-  user_id      uuid        not null references auth.users (id)        on delete cascade,
-  role         text        not null default 'member' check (role in ('owner', 'member')),
-  joined_at    timestamptz not null default now(),
-  primary key (household_id, user_id),
-
-  -- Esta segunda chave estrangeira parece redundante — user_id já aponta para
-  -- auth.users, e profiles.id também — mas NÃO é. O PostgREST só resolve o
-  -- embed `select=...,profiles(...)` se existir uma FK direta entre as duas
-  -- tabelas; apontarem para um terceiro em comum não basta. Sem ela, a
-  -- consulta dos membros falha com PGRST200 e a tela Família fica vazia.
-  --
-  -- É segura porque o gatilho handle_new_user() insere em profiles antes de
-  -- inserir aqui.
-  constraint household_members_profile_fk
-    foreign key (user_id) references public.profiles (id) on delete cascade
-);
-
-create index household_members_user_idx on public.household_members (user_id);
-
--- ------------------------------------------------------------ funções base
---
--- Estas três moram aqui (e não em 02_functions.sql) porque as tabelas abaixo
--- as usam como DEFAULT de coluna, e o Postgres exige que a função já exista
--- na hora de criar a tabela.
---
--- Todas são SECURITY DEFINER de propósito: elas leem household_members, que
--- tem RLS ligado. Se fossem SECURITY INVOKER, a policy de household_members
--- chamaria a função que lê household_members — recursão infinita. Sendo
--- DEFINER, a leitura roda com os privilégios do dono e a recursão some.
-
--- A casa do usuário logado. Serve de DEFAULT para household_id, o que deixa
--- os inserts do app enxutos e impede o client de forjar outra casa.
-create or replace function public.my_household_id()
-returns uuid
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select household_id
-  from public.household_members
-  where user_id = auth.uid()
-  limit 1
-$$;
-
--- Base de praticamente toda policy: "esta linha é da minha casa?"
-create or replace function public.is_household_member(hid uuid)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.household_members
-    where household_id = hid
-      and user_id = auth.uid()
-  )
-$$;
-
--- Usada para eu poder ver o perfil (nome/emoji) de quem divide a casa comigo.
-create or replace function public.shares_household_with(p_user uuid)
-returns boolean
-language sql
-security definer
-stable
-set search_path = public
-as $$
-  select exists (
-    select 1
-    from public.household_members a
-    join public.household_members b on a.household_id = b.household_id
-    where a.user_id = auth.uid()
-      and b.user_id = p_user
-  )
-$$;
+create index profiles_role_idx on public.profiles (role) where role = 'admin';
 
 -- ----------------------------------------------------------------- contas
 
+-- O `default auth.uid()` em user_id deixa os inserts do app enxutos e, junto
+-- com o WITH CHECK do RLS, impede o client de gravar linha no nome de outra
+-- pessoa mesmo que tente.
 create table public.accounts (
   id                    uuid primary key default gen_random_uuid(),
-  household_id          uuid not null references public.households (id) on delete cascade,
+  user_id               uuid not null default auth.uid() references auth.users (id) on delete cascade,
   name                  text not null,
   type                  text not null check (type in ('corrente', 'poupanca', 'dinheiro', 'cartao', 'investimento')),
   initial_balance_cents bigint      not null default 0,
@@ -133,32 +62,32 @@ create table public.accounts (
   )
 );
 
-create index accounts_household_idx on public.accounts (household_id) where archived = false;
+create index accounts_user_idx on public.accounts (user_id) where archived = false;
 
 -- ------------------------------------------------------------- categorias
 
 create table public.categories (
-  id           uuid primary key default gen_random_uuid(),
-  household_id uuid not null references public.households (id) on delete cascade,
-  name         text not null,
-  kind         text not null check (kind in ('expense', 'income')),
-  color        text        not null default '#64748b',
-  icon         text        not null default '🏷️',
-  parent_id    uuid references public.categories (id) on delete set null,
-  sort_order   int         not null default 0,
-  archived     boolean     not null default false,
-  created_at   timestamptz not null default now(),
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name       text not null,
+  kind       text not null check (kind in ('expense', 'income')),
+  color      text        not null default '#64748b',
+  icon       text        not null default '🏷️',
+  parent_id  uuid references public.categories (id) on delete set null,
+  sort_order int         not null default 0,
+  archived   boolean     not null default false,
+  created_at timestamptz not null default now(),
 
-  unique (household_id, kind, name)
+  unique (user_id, kind, name)
 );
 
-create index categories_household_idx on public.categories (household_id) where archived = false;
+create index categories_user_idx on public.categories (user_id) where archived = false;
 
 -- ------------------------------------------------------------ lançamentos
 
 create table public.transactions (
   id                   uuid primary key default gen_random_uuid(),
-  household_id         uuid   not null default public.my_household_id() references public.households (id) on delete cascade,
+  user_id              uuid   not null default auth.uid() references auth.users (id) on delete cascade,
   account_id           uuid   not null references public.accounts (id)   on delete restrict,
   category_id          uuid            references public.categories (id) on delete restrict,
   kind                 text   not null check (kind in ('expense', 'income', 'transfer')),
@@ -175,11 +104,6 @@ create table public.transactions (
   installment_no       smallint,
   installment_total    smallint,
   recurring_rule_id    uuid,
-  -- ON DELETE SET NULL, e não NOT NULL: created_by serve só para mostrar "quem
-  -- lançou". O lançamento pertence à CASA, não à pessoa — se alguém apagar a
-  -- conta, o histórico financeiro compartilhado tem que sobreviver, não travar
-  -- a exclusão nem sumir junto.
-  created_by           uuid default auth.uid() references auth.users (id) on delete set null,
   created_at           timestamptz not null default now(),
   updated_at           timestamptz not null default now(),
 
@@ -196,16 +120,16 @@ create table public.transactions (
   )
 );
 
-create index transactions_mes_idx     on public.transactions (household_id, date desc);
-create index transactions_cat_idx     on public.transactions (household_id, category_id, date);
+create index transactions_mes_idx     on public.transactions (user_id, date desc);
+create index transactions_cat_idx     on public.transactions (user_id, category_id, date);
 create index transactions_fatura_idx  on public.transactions (account_id, invoice_month) where invoice_month is not null;
 create index transactions_parcela_idx on public.transactions (installment_group_id) where installment_group_id is not null;
 
--- --------------------------------------------------------------- recorrentes
+-- ------------------------------------------------------------- recorrentes
 
 create table public.recurring_rules (
   id           uuid primary key default gen_random_uuid(),
-  household_id uuid   not null default public.my_household_id() references public.households (id) on delete cascade,
+  user_id      uuid   not null default auth.uid() references auth.users (id) on delete cascade,
   account_id   uuid   not null references public.accounts (id)   on delete cascade,
   category_id  uuid   not null references public.categories (id) on delete restrict,
   kind         text   not null check (kind in ('expense', 'income')),
@@ -215,7 +139,6 @@ create table public.recurring_rules (
   start_date   date        not null default current_date,
   end_date     date,
   active       boolean     not null default true,
-  created_by   uuid default auth.uid() references auth.users (id) on delete set null,
   created_at   timestamptz not null default now()
 );
 
@@ -223,39 +146,54 @@ alter table public.transactions
   add constraint transactions_recurring_fk
   foreign key (recurring_rule_id) references public.recurring_rules (id) on delete set null;
 
-create index recurring_household_idx on public.recurring_rules (household_id) where active;
+create index recurring_user_idx on public.recurring_rules (user_id) where active;
 
 -- ---------------------------------------------------------------- orçamentos
 
 create table public.budgets (
-  id           uuid primary key default gen_random_uuid(),
-  household_id uuid   not null default public.my_household_id() references public.households (id) on delete cascade,
-  category_id  uuid   not null references public.categories (id) on delete cascade,
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid   not null default auth.uid() references auth.users (id) on delete cascade,
+  category_id uuid   not null references public.categories (id) on delete cascade,
   -- Sempre o dia 1 do mês de referência.
-  month        date   not null,
-  limit_cents  bigint not null check (limit_cents > 0),
-  created_at   timestamptz not null default now(),
-  updated_at   timestamptz not null default now(),
+  month       date   not null,
+  limit_cents bigint not null check (limit_cents > 0),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
 
-  unique (household_id, category_id, month),
+  unique (user_id, category_id, month),
   constraint budgets_month_primeiro_dia check (extract(day from month) = 1)
 );
 
-create index budgets_mes_idx on public.budgets (household_id, month);
+create index budgets_mes_idx on public.budgets (user_id, month);
 
--- ------------------------------------------------------- realtime (2 usuários)
+-- ------------------------------------------------------------- mensagens
 
--- Faz o app da outra pessoa atualizar sozinho quando você lança algo.
--- Em bloco protegido: se você rodar este arquivo duas vezes, "já está na
--- publicação" não deve derrubar a migração inteira.
+-- Caixa de entrada: o admin escreve, o usuário lê. Mão única de propósito —
+-- não existe resposta, porque isso viraria um chat e não foi o pedido.
+--
+-- `from_user_id` é ON DELETE SET NULL: se a conta do admin for apagada, as
+-- mensagens que ele enviou continuam legíveis para quem recebeu.
+create table public.messages (
+  id           uuid primary key default gen_random_uuid(),
+  from_user_id uuid references auth.users (id) on delete set null,
+  to_user_id   uuid not null references public.profiles (id) on delete cascade,
+  title        text not null check (length(trim(title)) > 0),
+  body         text not null default '',
+  kind         text not null default 'info' check (kind in ('info', 'aviso', 'alerta')),
+  read_at      timestamptz,
+  created_at   timestamptz not null default now()
+);
+
+-- Índice parcial: a consulta mais frequente do app é "quantas não lidas eu
+-- tenho?", e ela só olha as linhas com read_at nulo.
+create index messages_nao_lidas_idx on public.messages (to_user_id) where read_at is null;
+create index messages_caixa_idx     on public.messages (to_user_id, created_at desc);
+
+-- ---------------------------------------------------------------- realtime
+
+-- Faz o sino de mensagens acender na hora, sem precisar recarregar o app.
 do $$
 begin
-  alter publication supabase_realtime add table public.transactions;
-exception when duplicate_object then null;
-end $$;
-
-do $$
-begin
-  alter publication supabase_realtime add table public.budgets;
+  alter publication supabase_realtime add table public.messages;
 exception when duplicate_object then null;
 end $$;

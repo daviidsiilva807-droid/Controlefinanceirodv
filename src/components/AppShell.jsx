@@ -1,6 +1,7 @@
 import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom'
 import { Icone } from './Icone'
 import { BotaoIcone } from './ui'
+import { useNaoLidas } from '../hooks/useMensagens'
 import { Toast } from './Toast'
 import { DicaInstalar } from './DicaInstalar'
 import { FormLancamento } from '../pages/FormLancamento'
@@ -97,19 +98,51 @@ export function CabecalhoVoltar({ titulo, subtitulo, acao }) {
   )
 }
 
+/**
+ * Sino de mensagens com contador de não lidas.
+ *
+ * Fica no cabeçalho das telas principais, e não na barra inferior, porque a
+ * barra já tem cinco itens — um sexto deixaria os alvos de toque estreitos
+ * demais para o polegar.
+ */
+export function Sino() {
+  const naoLidas = useNaoLidas()
+
+  return (
+    <NavLink
+      to="/mensagens"
+      aria-label={naoLidas ? `Mensagens, ${naoLidas} não lidas` : 'Mensagens'}
+      className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl
+        text-slate-600 transition-colors active:bg-slate-200 dark:text-slate-300
+        dark:active:bg-slate-800"
+    >
+      <Icone nome="sino" tamanho={20} />
+      {naoLidas > 0 && (
+        <span
+          className="absolute right-1 top-1 flex h-4 min-w-4 items-center justify-center
+            rounded-full bg-rose-500 px-1 text-[10px] font-bold text-white"
+        >
+          {naoLidas > 9 ? '9+' : naoLidas}
+        </span>
+      )}
+    </NavLink>
+  )
+}
+
 /** Cabeçalho padrão das telas internas. */
-export function Cabecalho({ titulo, subtitulo, acao, children }) {
+export function Cabecalho({ titulo, subtitulo, acao, children, comSino = true }) {
   return (
     <header className="sticky top-0 z-20 border-b border-slate-200 bg-slate-50/90 px-4 pt-safe
       backdrop-blur-lg dark:border-slate-800 dark:bg-slate-950/90">
       <div className="flex min-h-14 items-center justify-between gap-2 py-2">
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <h1 className="truncate text-lg font-bold">{titulo}</h1>
           {subtitulo && (
             <p className="truncate text-xs text-slate-500 dark:text-slate-400">{subtitulo}</p>
           )}
         </div>
         {acao}
+        {comSino && <Sino />}
       </div>
       {children}
     </header>

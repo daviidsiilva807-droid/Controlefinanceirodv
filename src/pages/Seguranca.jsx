@@ -139,7 +139,8 @@ export function Seguranca() {
           </p>
           <p className="mt-1.5">
             Seus dados ficam protegidos no servidor pelas regras de acesso do Supabase, que só
-            liberam os lançamentos da sua casa para quem está logado nela.
+            entregam um lançamento para a conta dona dele — nenhum outro usuário, nem o
+            administrador, consegue lê-los.
           </p>
         </Aviso>
       </div>

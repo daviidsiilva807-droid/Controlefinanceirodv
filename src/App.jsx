@@ -20,31 +20,34 @@ import { Mais } from './pages/Mais'
 import { Contas } from './pages/Contas'
 import { Categorias } from './pages/Categorias'
 import { Recorrentes } from './pages/Recorrentes'
-import { Familia } from './pages/Familia'
+import { Perfil } from './pages/Perfil'
 import { Seguranca } from './pages/Seguranca'
+import { Mensagens } from './pages/Mensagens'
+import { Administracao } from './pages/Administracao'
 
 export default function App() {
   const iniciarTema = useUI((s) => s.iniciarTema)
   const iniciar = useAuth((s) => s.iniciar)
   const carregando = useAuth((s) => s.carregando)
   const sessao = useAuth((s) => s.sessao)
-  const casa = useAuth((s) => s.casa)
   const trancado = useAuth((s) => s.trancado)
   const trancar = useAuth((s) => s.trancar)
   const carregarDados = useDados((s) => s.carregar)
   const limparDados = useDados((s) => s.limpar)
+
+  const userId = sessao?.user?.id
 
   useEffect(() => {
     iniciarTema()
     iniciar()
   }, [iniciarTema, iniciar])
 
-  // Contas e categorias são carregadas quando a casa fica conhecida, e
-  // descartadas no logout para não vazarem para a próxima sessão.
+  // Contas e categorias são carregadas quando há sessão, e descartadas no
+  // logout para não vazarem para a próxima conta que entrar neste aparelho.
   useEffect(() => {
-    if (casa?.id) carregarDados().catch(() => {})
+    if (userId) carregarDados().catch(() => {})
     else limparDados()
-  }, [casa?.id, carregarDados, limparDados])
+  }, [userId, carregarDados, limparDados])
 
   /**
    * Tranca o app quando ele volta do segundo plano depois do tempo limite.
@@ -74,12 +77,16 @@ export default function App() {
         <Route path="cartoes" element={<Cartoes />} />
         <Route path="orcamentos" element={<Orcamentos />} />
         <Route path="relatorios" element={<Relatorios />} />
+        <Route path="mensagens" element={<Mensagens />} />
         <Route path="mais" element={<Mais />} />
         <Route path="mais/contas" element={<Contas />} />
         <Route path="mais/categorias" element={<Categorias />} />
         <Route path="mais/recorrentes" element={<Recorrentes />} />
-        <Route path="mais/familia" element={<Familia />} />
+        <Route path="mais/perfil" element={<Perfil />} />
         <Route path="mais/seguranca" element={<Seguranca />} />
+        {/* A guarda de admin fica dentro da própria tela: esconder o link do
+            menu é conveniência, não controle de acesso. */}
+        <Route path="mais/administracao" element={<Administracao />} />
       </Route>
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { assinarTabela } from '../lib/realtime'
 import { useAuth } from '../store/authStore'
 
 /**
@@ -10,38 +11,28 @@ import { useAuth } from '../store/authStore'
  * inteiro só para mostrar um número no topo da tela.
  */
 export function useSaldos() {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const [saldos, setSaldos] = useState({})
   const [carregando, setCarregando] = useState(true)
 
   const buscar = useCallback(async () => {
-    if (!casaId) return
+    if (!userId) return
     const { data, error } = await supabase.rpc('account_balances')
     if (!error) {
       setSaldos(Object.fromEntries((data ?? []).map((l) => [l.account_id, Number(l.balance_cents)])))
     }
     setCarregando(false)
-  }, [casaId])
+  }, [userId])
 
   useEffect(() => {
     buscar()
   }, [buscar])
 
-  // Saldo muda a cada lançamento — inclusive os da outra pessoa.
-  useEffect(() => {
-    if (!casaId) return
-    const canal = supabase
-      .channel(`saldos:${casaId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions', filter: `household_id=eq.${casaId}` },
-        () => buscar()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(canal)
-    }
-  }, [casaId, buscar])
+  // Saldo muda a cada lançamento, inclusive os feitos em outro aparelho.
+  useEffect(
+    () => assinarTabela({ tabela: 'transactions', coluna: 'user_id', valor: userId, aoMudar: buscar }),
+    [userId, buscar]
+  )
 
   const total = Object.values(saldos).reduce((acc, v) => acc + v, 0)
   return { saldos, total, carregando, recarregar: buscar }

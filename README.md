@@ -1,8 +1,12 @@
 # Controle Financeiro
 
-App de controle financeiro pessoal e familiar que se instala na tela inicial do celular e abre em
-tela cheia, como um app nativo. Login com e-mail e senha, dados na nuvem, feito para duas pessoas
-compartilharem os mesmos lançamentos.
+App de controle financeiro pessoal que se instala na tela inicial do celular e abre em tela cheia,
+como um app nativo. Login com e-mail e senha, dados na nuvem.
+
+**Cada conta é uma ilha.** Lançamentos, contas, cartões e orçamentos pertencem a um único usuário e
+mais ninguém enxerga — nem outro usuário, nem o administrador. Existe um papel de **admin**, que vê
+apenas a lista de pessoas cadastradas (nome, e-mail e data) e pode enviar mensagens para a caixa de
+entrada delas. Nada financeiro.
 
 **React + Vite + Tailwind · Supabase (Postgres + Auth + RLS) · PWA · pt-BR**
 
@@ -84,15 +88,28 @@ tela inicial. Depois de instalado, funciona igual: ícone próprio, splash scree
 
 ---
 
-## Usar a dois
+## Contas, papéis e mensagens
 
-1. Você cria sua conta normalmente.
-2. Em **Mais → Família**, copie o código de 6 caracteres (ex.: `A7K2M9`).
-3. A outra pessoa cria a conta dela e digita esse código no campo *Código de convite*.
+**A primeira conta criada no sistema vira administradora.** Cadastre-se antes de qualquer outra
+pessoa. Da segunda em diante, todo mundo entra como usuário comum.
 
-A partir daí vocês veem os mesmos lançamentos, contas, cartões e orçamentos, com identificação de
-quem lançou. O código é feito de caracteres sem ambiguidade (sem `0`, `O`, `1`, `I`) porque ele é
-ditado em voz alta.
+O admin ganha o menu **Mais → Administração**, onde vê a lista de usuários e pode enviar uma
+mensagem para uma pessoa específica ou para todas de uma vez. A mensagem cai na caixa de entrada do
+destinatário e o sino do cabeçalho acende na hora, sem recarregar a página.
+
+**O que o admin NÃO vê:** lançamentos, saldos, cartões, orçamentos ou categorias de ninguém. Isso
+não é escolha da interface — as policies do banco não fazem exceção para administrador, então nem
+chamando a API direto com o token dele o dado aparece.
+
+Se precisar trocar quem é admin depois, é uma linha no SQL Editor:
+
+```sql
+update public.profiles set role = 'admin' where email = 'novo-admin@exemplo.com';
+update public.profiles set role = 'user'  where email = 'antigo-admin@exemplo.com';
+```
+
+Isso só funciona pelo SQL Editor de propósito: o app não tem como alterar o campo `role`, porque o
+`GRANT` libera para o client apenas as colunas `display_name` e `emoji`.
 
 ---
 
@@ -109,8 +126,9 @@ ditado em voz alta.
   fechamento no ritmo atual.
 - **Relatórios** — evolução de 6/12 meses, comparativo com o mês anterior, ranking de categorias e
   exportação CSV pronta para o Excel em português.
+- **Mensagens** — caixa de entrada com sino e contador de não lidas, alimentada pelo administrador.
 - **Bloqueio** — PIN de 6 dígitos e biometria (Face ID / digital).
-- Tema claro e escuro, e sincronização em tempo real entre os dois celulares.
+- Tema claro e escuro, e sincronização em tempo real entre os seus aparelhos.
 
 ---
 
@@ -124,10 +142,19 @@ conversão para “R$ 1.234,56” acontece só na hora de exibir. Ver [`src/lib/
 como meia-noite UTC, que no Brasil é 21h do dia 30 de junho — e o lançamento aparece no mês errado.
 Ver `parseData()` em [`src/lib/dates.js`](src/lib/dates.js).
 
-**O RLS é a segurança de verdade.** A chave anônima do Supabase fica visível no bundle, como é
+**O RLS é a segurança de verdade.** A chave pública do Supabase fica visível no bundle, como é
 esperado. Quem impede alguém de ler seus lançamentos não é o front-end: são as policies de
-[`03_rls.sql`](supabase/03_rls.sql), baseadas numa função `SECURITY DEFINER` que evita a recursão
-infinita clássica na policy de `household_members`.
+[`03_rls.sql`](supabase/03_rls.sql). Elas são deliberadamente simples — `user_id = auth.uid()`, sem
+função auxiliar e sem exceção para admin — porque regra de isolamento que ninguém consegue ler de
+cabeça é regra que ninguém consegue auditar.
+
+**A escalada de privilégio é barrada por `GRANT` de coluna, não por policy.** A policy de UPDATE em
+`profiles` permite editar a própria linha, o que incluiria `role`. Por isso o client recebe
+`grant update (display_name, emoji)` e nada mais: `role` é intocável de fora do SQL Editor.
+
+**Canal de realtime leva sufixo aleatório no nome.** O `supabase-js` devolve a mesma instância para
+um mesmo tópico; dois componentes usando o mesmo hook fariam o segundo chamar `.on()` num canal já
+assinado, e o erro derruba a tela inteira. Veja [`src/lib/realtime.js`](src/lib/realtime.js).
 
 **O PIN é uma tranca, não criptografia.** Ele impede que alguém com seu celular *já desbloqueado*
 abra o app. Ele não criptografa nada e não substitui o login. Isso está dito na própria tela de
@@ -169,8 +196,11 @@ instalável.
 
 Depois, os testes que só a mão faz:
 
-- **RLS:** crie dois usuários em casas diferentes e confirme que nenhum vê os lançamentos do outro.
-  Junte-os pelo código de convite e confirme que ambos passam a ver tudo.
+- **Isolamento (o mais importante):** crie duas contas, lance um valor em cada e confirme que
+  nenhuma vê o da outra — inclusive a do admin. Vale testar também chamando a API direto:
+  `GET /rest/v1/transactions` com o token de um usuário só pode devolver as linhas dele.
+- **Escalada de privilégio:** com o token de um usuário comum, tente
+  `PATCH /rest/v1/profiles?id=eq.<seu-id>` com `{"role":"admin"}`. Tem que falhar.
 - **Centavos:** lance R$ 0,10 e R$ 0,20 e confira que o total é R$ 0,30. Parcele R$ 100,00 em 3x e
   confira 33,34 + 33,33 + 33,33.
 - **Cartão:** com fechamento no dia 25, lance uma compra no dia 24 e outra no dia 26 e confirme que
@@ -185,14 +215,15 @@ Depois, os testes que só a mão faz:
 supabase/          SQL: schema, funções, RLS e dados de exemplo
 scripts/           Geração de ícones e verificação das funções puras
 src/
-  lib/             money · dates · pin · supabase · resumo (regras puras)
+  lib/             money · dates · pin · supabase · realtime · resumo (regras puras)
   store/           auth · dados (contas/categorias) · ui (tema, mês, toast)
-  hooks/           transações · saldos · fatura · orçamentos · recorrentes
+  hooks/           transações · saldos · fatura · orçamentos · recorrentes · mensagens
   components/      UI, gráficos, shell e navegação
   pages/           Uma tela por arquivo
 ```
 
 ## Ainda não tem (mas cabe depois)
 
-Gravação offline com fila de sincronização · notificações push de contas a vencer · importação de OFX
-ou Open Finance · categorização automática · metas de economia.
+Notificação push de verdade (na tela de bloqueio, com o app fechado) · resposta do usuário para o
+admin · gravação offline com fila de sincronização · importação de OFX ou Open Finance ·
+categorização automática · metas de economia.

@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
+import { assinarTabela } from '../lib/realtime'
 import { useAuth } from '../store/authStore'
 import { useDados } from '../store/dataStore'
 import { inicioMesISO, mesDaChave } from '../lib/dates'
@@ -14,7 +15,7 @@ import { inicioMesISO, mesDaChave } from '../lib/dates'
  * consulta é separada, e não um filtro sobre a outra.
  */
 export function useFatura(chave) {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   // O seletor devolve o array cru e o filtro acontece no useMemo. Filtrar
   // dentro do seletor criaria um array novo a cada render, e o React trata
   // isso como "o estado mudou de novo" — o resultado é um loop de renders.
@@ -27,7 +28,7 @@ export function useFatura(chave) {
   const [carregando, setCarregando] = useState(true)
 
   const buscar = useCallback(async () => {
-    if (!casaId || !chave) return
+    if (!userId || !chave) return
     setCarregando(true)
     const { data, error } = await supabase
       .from('transactions')
@@ -41,26 +42,16 @@ export function useFatura(chave) {
 
     if (!error) setItens(data ?? [])
     setCarregando(false)
-  }, [casaId, chave])
+  }, [userId, chave])
 
   useEffect(() => {
     buscar()
   }, [buscar])
 
-  useEffect(() => {
-    if (!casaId) return
-    const canal = supabase
-      .channel(`fatura:${casaId}`)
-      .on(
-        'postgres_changes',
-        { event: '*', schema: 'public', table: 'transactions', filter: `household_id=eq.${casaId}` },
-        () => buscar()
-      )
-      .subscribe()
-    return () => {
-      supabase.removeChannel(canal)
-    }
-  }, [casaId, buscar])
+  useEffect(
+    () => assinarTabela({ tabela: 'transactions', coluna: 'user_id', valor: userId, aoMudar: buscar }),
+    [userId, buscar]
+  )
 
   /** Uma entrada por cartão, mesmo que a fatura esteja zerada no mês. */
   const faturas = useMemo(() => {
@@ -89,7 +80,7 @@ export function useFatura(chave) {
  * de hoje não mostra e que costuma ser a origem do susto no fim do mês.
  */
 export function useParcelasFuturas() {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const [parcelas, setParcelas] = useState([])
 
   useEffect(() => {
@@ -114,7 +105,7 @@ export function useParcelasFuturas() {
     return () => {
       ativo = false
     }
-  }, [casaId])
+  }, [userId])
 
   const total = parcelas.reduce((acc, p) => acc + p.amount_cents, 0)
   return { parcelas, total }

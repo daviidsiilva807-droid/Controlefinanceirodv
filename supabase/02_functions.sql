@@ -3,66 +3,47 @@
 --  Rode depois de 01_schema.sql.
 -- =====================================================================
 
--- ------------------------------------------------------- código de convite
+-- ------------------------------------------------------------------ papel
 
--- Alfabeto sem 0/O/1/I/L: o código é ditado em voz alta para a outra pessoa,
--- então caracteres ambíguos só geram frustração.
-create or replace function public.generate_invite_code()
-returns text
-language plpgsql
-volatile
-set search_path = public
-as $$
-declare
-  alfabeto constant text := 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-  codigo   text;
-begin
-  loop
-    codigo := '';
-    for _ in 1 .. 6 loop
-      codigo := codigo || substr(alfabeto, 1 + floor(random() * length(alfabeto))::int, 1);
-    end loop;
-    exit when not exists (select 1 from public.households where invite_code = codigo);
-  end loop;
-  return codigo;
-end;
-$$;
-
--- Consultada na tela de cadastro, ANTES do login existir — por isso é a única
--- função liberada para o papel `anon`. Devolve só o nome da casa (nunca dados
--- financeiros), então errar o código não vaza nada de útil.
-create or replace function public.household_name_for_code(p_code text)
-returns text
+-- "Quem está logado é administrador?"
+--
+-- SECURITY DEFINER de propósito: a policy de SELECT da própria tabela
+-- `profiles` chama esta função. Se ela fosse INVOKER, ler profiles exigiria
+-- ler profiles — recursão infinita. Sendo DEFINER, a leitura roda com os
+-- privilégios do dono e a recursão some.
+create or replace function public.is_admin()
+returns boolean
 language sql
 security definer
 stable
 set search_path = public
 as $$
-  select name from public.households where invite_code = upper(trim(p_code))
+  select exists (
+    select 1 from public.profiles
+    where id = auth.uid() and role = 'admin'
+  )
 $$;
 
--- ---------------------------------------------------- casa nova já mobiliada
+-- ---------------------------------------------------- conta nova mobiliada
 
 -- Categorias e contas iniciais em pt-BR. Sem isso o app abre vazio e a pessoa
 -- precisa cadastrar 20 categorias antes de lançar o primeiro gasto.
 --
--- As cores NÃO foram escolhidas no olho: são os tons de uma paleta categórica
+-- As cores NÃO foram escolhidas no olho: são tons de uma paleta categórica
 -- validada para daltonismo (protanopia/deuteranopia), com os oito primeiros
--- reservados para as categorias que mais aparecem nos gráficos. Ainda assim,
+-- reservados às categorias que mais aparecem nos gráficos. Ainda assim,
 -- nenhuma paleta resolve seis cores arbitrárias lado a lado — por isso todo
--- gráfico do app rotula categoria por emoji e nome, e a cor é reforço.
-create or replace function public.seed_household(p_household uuid)
+-- gráfico do app rotula por emoji e nome, e a cor é reforço.
+create or replace function public.seed_user(p_user uuid)
 returns void
 language plpgsql
 security definer
 set search_path = public
 as $$
 begin
-  insert into public.categories (household_id, name, kind, icon, color, sort_order)
-  select p_household, d.name, d.kind, d.icon, d.color, d.ord
+  insert into public.categories (user_id, name, kind, icon, color, sort_order)
+  select p_user, d.name, d.kind, d.icon, d.color, d.ord
   from (values
-    -- Os oito primeiros tons da paleta validada vão para as categorias que
-    -- costumam liderar o gasto e, portanto, aparecem nos gráficos.
     ('Moradia',            'expense', '🏠', '#2a78d6',  1),
     ('Mercado',            'expense', '🛒', '#eb6834',  2),
     ('Alimentação',        'expense', '🍽️', '#1baf7a',  3),
@@ -71,7 +52,6 @@ begin
     ('Saúde',              'expense', '🏥', '#008300',  6),
     ('Lazer',              'expense', '🎉', '#4a3aa7',  7),
     ('Assinaturas',        'expense', '📱', '#e34948',  8),
-    -- As demais usam outros degraus das mesmas rampas.
     ('Educação',           'expense', '📚', '#256abf',  9),
     ('Vestuário',          'expense', '👕', '#d95926', 10),
     ('Cuidados pessoais',  'expense', '💇', '#9085e9', 11),
@@ -87,25 +67,24 @@ begin
     ('Reembolso',          'income',  '🔁', '#4a3aa7',  4),
     ('Outros ganhos',      'income',  '✨', '#eda100',  5)
   ) as d(name, kind, icon, color, ord)
-  on conflict (household_id, kind, name) do nothing;
+  on conflict (user_id, kind, name) do nothing;
 
-  insert into public.accounts (household_id, name, type, icon, color, sort_order)
+  insert into public.accounts (user_id, name, type, icon, color, sort_order)
   values
-    (p_household, 'Conta corrente', 'corrente', '🏦', '#3b82f6', 1),
-    (p_household, 'Dinheiro',       'dinheiro', '💵', '#22c55e', 2);
+    (p_user, 'Conta corrente', 'corrente', '🏦', '#2a78d6', 1),
+    (p_user, 'Dinheiro',       'dinheiro', '💵', '#1baf7a', 2);
 end;
 $$;
 
 -- ------------------------------------------------------- cadastro de usuário
 
--- Dispara no signup. Cria o perfil e resolve a casa: com código de convite
--- válido entra na casa existente; sem código, ganha uma casa nova já com
--- categorias e contas.
+-- Dispara no signup: cria o perfil, define o papel e mobília a conta.
 --
--- Repare que um código inválido NÃO derruba o cadastro — ele apenas cai no
--- caminho "casa nova". Uma exceção aqui viraria um "Database error saving new
--- user" ilegível para o usuário; a validação amigável do código acontece na
--- tela de cadastro, via household_name_for_code().
+-- REGRA DO ADMIN: a primeira conta criada no sistema vira administradora. O
+-- teste é `count(*) <= 1` em auth.users, e não `not exists (select 1 from
+-- profiles)`, porque este é um gatilho AFTER INSERT — o próprio usuário novo
+-- já está contado. Contar auth.users em vez de profiles evita a brecha de
+-- alguém apagar o perfil (mas não a conta) para se promover.
 create or replace function public.handle_new_user()
 returns trigger
 language plpgsql
@@ -113,39 +92,23 @@ security definer
 set search_path = public
 as $$
 declare
-  v_nome    text;
-  v_codigo  text;
-  v_destino uuid;
+  v_nome  text;
+  v_papel text;
 begin
   v_nome := coalesce(
     nullif(trim(new.raw_user_meta_data ->> 'display_name'), ''),
     split_part(new.email, '@', 1)
   );
 
-  insert into public.profiles (id, display_name)
-  values (new.id, v_nome)
+  select case when count(*) <= 1 then 'admin' else 'user' end
+    into v_papel
+  from auth.users;
+
+  insert into public.profiles (id, display_name, email, role)
+  values (new.id, v_nome, new.email, v_papel)
   on conflict (id) do nothing;
 
-  v_codigo := upper(nullif(trim(new.raw_user_meta_data ->> 'invite_code'), ''));
-
-  if v_codigo is not null then
-    select id into v_destino from public.households where invite_code = v_codigo;
-  end if;
-
-  if v_destino is not null then
-    insert into public.household_members (household_id, user_id, role)
-    values (v_destino, new.id, 'member')
-    on conflict do nothing;
-  else
-    insert into public.households (name, invite_code)
-    values ('Casa de ' || v_nome, public.generate_invite_code())
-    returning id into v_destino;
-
-    insert into public.household_members (household_id, user_id, role)
-    values (v_destino, new.id, 'owner');
-
-    perform public.seed_household(v_destino);
-  end if;
+  perform public.seed_user(new.id);
 
   return new;
 end;
@@ -156,68 +119,14 @@ create trigger on_auth_user_created
   after insert on auth.users
   for each row execute function public.handle_new_user();
 
--- Entrar numa casa depois do cadastro (tela Configurações > Família).
---
--- Se a pessoa já tem uma casa própria mas ainda não lançou nada, essa casa
--- vazia é descartada — é o caso normal de quem se cadastrou e só depois
--- recebeu o código. Se já existem lançamentos, recusamos: juntar duas casas
--- com histórico é uma operação destrutiva que o usuário precisa decidir.
-create or replace function public.join_household(p_code text)
-returns uuid
-language plpgsql
-security definer
-set search_path = public
-as $$
-declare
-  v_destino  uuid;
-  v_atual    uuid;
-  v_lancados int;
-begin
-  if auth.uid() is null then
-    raise exception 'NAO_AUTENTICADO';
-  end if;
-
-  select id into v_destino from public.households where invite_code = upper(trim(p_code));
-  if v_destino is null then
-    raise exception 'CODIGO_INVALIDO';
-  end if;
-
-  select household_id into v_atual
-  from public.household_members where user_id = auth.uid() limit 1;
-
-  if v_atual = v_destino then
-    return v_destino;
-  end if;
-
-  if v_atual is not null then
-    select count(*) into v_lancados from public.transactions where household_id = v_atual;
-    if v_lancados > 0 then
-      raise exception 'CASA_COM_DADOS';
-    end if;
-
-    delete from public.household_members where user_id = auth.uid() and household_id = v_atual;
-    delete from public.households h
-    where h.id = v_atual
-      and not exists (select 1 from public.household_members m where m.household_id = h.id);
-  end if;
-
-  insert into public.household_members (household_id, user_id, role)
-  values (v_destino, auth.uid(), 'member')
-  on conflict do nothing;
-
-  return v_destino;
-end;
-$$;
-
 -- ------------------------------------------------------ fatura do cartão
 
--- Descobre a qual fatura a compra pertence. Regra: compra a partir do dia do
+-- A qual fatura a compra pertence. Regra: compra a partir do dia do
 -- fechamento já entra na fatura do mês seguinte. Ex.: fechamento dia 25 —
 -- compra em 24/jan cai na fatura de janeiro; em 26/jan, na de fevereiro.
 --
 -- Fica no banco, e não no client, porque relatório e fatura precisam
--- concordar mesmo se um lançamento for criado por outro caminho (importação,
--- SQL manual, recorrente).
+-- concordar mesmo se um lançamento for criado por outro caminho.
 create or replace function public.set_invoice_month()
 returns trigger
 language plpgsql
@@ -225,9 +134,9 @@ security definer
 set search_path = public
 as $$
 declare
-  v_tipo        text;
-  v_fechamento  smallint;
-  v_ref         date;
+  v_tipo       text;
+  v_fechamento smallint;
+  v_ref        date;
 begin
   select type, closing_day into v_tipo, v_fechamento
   from public.accounts where id = new.account_id;
@@ -246,6 +155,7 @@ begin
 end;
 $$;
 
+drop trigger if exists transactions_set_invoice_month on public.transactions;
 create trigger transactions_set_invoice_month
   before insert or update of date, account_id on public.transactions
   for each row execute function public.set_invoice_month();
@@ -255,8 +165,6 @@ create trigger transactions_set_invoice_month
 create or replace function public.touch_updated_at()
 returns trigger
 language plpgsql
--- search_path fixo em toda função: sem isso, um schema colocado no caminho de
--- busca poderia sequestrar a resolução de nomes lá dentro.
 set search_path = public
 as $$
 begin
@@ -265,18 +173,18 @@ begin
 end;
 $$;
 
+drop trigger if exists transactions_touch on public.transactions;
 create trigger transactions_touch before update on public.transactions
   for each row execute function public.touch_updated_at();
 
+drop trigger if exists budgets_touch on public.budgets;
 create trigger budgets_touch before update on public.budgets
   for each row execute function public.touch_updated_at();
 
 -- ------------------------------------------------- materializar recorrentes
 
 -- Chamada pelo app ao abrir e ao trocar de mês. Cria os lançamentos das regras
--- ativas que ainda não têm lançamento naquele mês, marcados como NÃO pagos —
--- eles aparecem como "a pagar" até você confirmar.
---
+-- ativas que ainda não têm lançamento naquele mês, marcados como NÃO pagos.
 -- É idempotente: rodar dez vezes no mesmo mês não duplica nada.
 create or replace function public.materialize_recurring(p_month date default null)
 returns int
@@ -285,19 +193,19 @@ security definer
 set search_path = public
 as $$
 declare
-  v_casa  uuid := public.my_household_id();
+  v_user  uuid := auth.uid();
   v_mes   date := date_trunc('month', coalesce(p_month, current_date))::date;
   v_data  date;
   v_total int  := 0;
   r       record;
 begin
-  if v_casa is null then
+  if v_user is null then
     return 0;
   end if;
 
   for r in
     select * from public.recurring_rules
-    where household_id = v_casa and active
+    where user_id = v_user and active
   loop
     v_data := (v_mes + (r.day_of_month - 1) * interval '1 day')::date;
 
@@ -310,12 +218,12 @@ begin
     );
 
     insert into public.transactions (
-      household_id, account_id, category_id, kind, amount_cents,
-      description, date, paid, recurring_rule_id, created_by
+      user_id, account_id, category_id, kind, amount_cents,
+      description, date, paid, recurring_rule_id
     )
     values (
-      v_casa, r.account_id, r.category_id, r.kind, r.amount_cents,
-      r.description, v_data, false, r.id, auth.uid()
+      v_user, r.account_id, r.category_id, r.kind, r.amount_cents,
+      r.description, v_data, false, r.id
     );
 
     v_total := v_total + 1;
@@ -327,9 +235,8 @@ $$;
 
 -- ------------------------------------------------------------- relatórios
 
--- Totais por mês para o gráfico de evolução. Existe para não baixar um ano
--- inteiro de lançamentos só para desenhar 12 barras.
--- SECURITY INVOKER de propósito: aqui o RLS DEVE valer.
+-- SECURITY INVOKER (o padrão): aqui o RLS DEVE valer, senão a função viraria
+-- um buraco por onde um usuário leria os totais de outro.
 create or replace function public.monthly_totals(p_from date, p_to date)
 returns table (month date, income_cents bigint, expense_cents bigint)
 language sql
@@ -337,9 +244,9 @@ stable
 set search_path = public
 as $$
   select
-    date_trunc('month', t.date)::date                                              as month,
-    coalesce(sum(t.amount_cents) filter (where t.kind = 'income'),  0)::bigint      as income_cents,
-    coalesce(sum(t.amount_cents) filter (where t.kind = 'expense'), 0)::bigint      as expense_cents
+    date_trunc('month', t.date)::date                                         as month,
+    coalesce(sum(t.amount_cents) filter (where t.kind = 'income'),  0)::bigint as income_cents,
+    coalesce(sum(t.amount_cents) filter (where t.kind = 'expense'), 0)::bigint as expense_cents
   from public.transactions t
   where t.date >= p_from
     and t.date <  p_to
@@ -348,13 +255,11 @@ as $$
   order by 1
 $$;
 
--- Saldo atual de cada conta (cartão de crédito fica de fora: ele não tem
--- saldo, tem fatura). Só lançamentos com paid = true entram — o previsto não
--- deve mexer no que você tem hoje.
+-- Saldo de cada conta (cartão fica de fora: ele tem fatura, não saldo). Só
+-- lançamentos com paid = true entram.
 --
--- As duas somas são subconsultas independentes de propósito: fazer isso com
--- dois LEFT JOIN produziria produto cartesiano entre as linhas e inflaria o
--- saldo silenciosamente.
+-- As duas somas são subconsultas independentes de propósito: com dois LEFT
+-- JOIN o produto cartesiano entre as linhas inflaria o saldo em silêncio.
 create or replace function public.account_balances()
 returns table (account_id uuid, balance_cents bigint)
 language sql
@@ -365,14 +270,11 @@ as $$
     a.id,
     (
       a.initial_balance_cents
-      -- Movimentos da própria conta: entrada soma, saída e transferência
-      -- enviada subtraem.
       + coalesce((
           select sum(case when t.kind = 'income' then t.amount_cents else -t.amount_cents end)
           from public.transactions t
           where t.account_id = a.id and t.paid
         ), 0)
-      -- Transferências recebidas.
       + coalesce((
           select sum(t.amount_cents)
           from public.transactions t
@@ -383,44 +285,97 @@ as $$
   where a.type <> 'cartao'
 $$;
 
--- ------------------------------------------------------------------ grants
+-- -------------------------------------------------------------- mensagens
 
+-- Envio pelo admin. Existe como função (em vez de INSERT direto) para o
+-- remetente ser sempre auth.uid(), sem depender do client mandar o campo
+-- certo, e para validar o papel num lugar só.
+create or replace function public.send_message(
+  p_to    uuid,
+  p_title text,
+  p_body  text default '',
+  p_kind  text default 'info'
+)
+returns uuid
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_id uuid;
+begin
+  if not public.is_admin() then
+    raise exception 'SEM_PERMISSAO';
+  end if;
+
+  if not exists (select 1 from public.profiles where id = p_to) then
+    raise exception 'USUARIO_INEXISTENTE';
+  end if;
+
+  insert into public.messages (from_user_id, to_user_id, title, body, kind)
+  values (auth.uid(), p_to, trim(p_title), coalesce(p_body, ''), coalesce(p_kind, 'info'))
+  returning id into v_id;
+
+  return v_id;
+end;
+$$;
+
+-- Envio para todo mundo de uma vez (menos o próprio admin). Devolve quantas
+-- mensagens foram criadas.
+create or replace function public.broadcast_message(
+  p_title text,
+  p_body  text default '',
+  p_kind  text default 'info'
+)
+returns int
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_total int;
+begin
+  if not public.is_admin() then
+    raise exception 'SEM_PERMISSAO';
+  end if;
+
+  insert into public.messages (from_user_id, to_user_id, title, body, kind)
+  select auth.uid(), p.id, trim(p_title), coalesce(p_body, ''), coalesce(p_kind, 'info')
+  from public.profiles p
+  where p.id <> auth.uid();
+
+  get diagnostics v_total = row_count;
+  return v_total;
+end;
+$$;
+
+-- ------------------------------------------------------------------ grants
+--
 -- ATENÇÃO A ESTA ORDEM: revogar de PUBLIC primeiro, conceder depois.
 --
 -- O Postgres concede EXECUTE a PUBLIC por padrão em toda função nova, e os
--- papéis `anon` e `authenticated` herdam de PUBLIC. Logo, um
--- `revoke execute ... from anon, authenticated` sozinho NÃO protege nada — o
--- grant de PUBLIC continua valendo e a função segue exposta como endpoint
--- REST em /rest/v1/rpc/<nome>.
---
--- Sem esta revogação, funções internas ficam publicamente chamáveis, entre
--- elas seed_household(), que é SECURITY DEFINER e escreveria numa casa
--- arbitrária.
+-- papéis `anon` e `authenticated` herdam de PUBLIC. Logo, revogar só de
+-- anon/authenticated NÃO protege nada — a função continua exposta como
+-- endpoint REST em /rest/v1/rpc/<nome>.
 revoke execute on all functions in schema public from public, anon, authenticated;
 
--- A partir daqui, só o que o app realmente chama.
+grant execute on function public.materialize_recurring(date)                to authenticated;
+grant execute on function public.monthly_totals(date, date)                 to authenticated;
+grant execute on function public.account_balances()                         to authenticated;
+grant execute on function public.is_admin()                                 to authenticated;
+grant execute on function public.send_message(uuid, text, text, text)       to authenticated;
+grant execute on function public.broadcast_message(text, text, text)        to authenticated;
 
--- A única aberta ao `anon`, de propósito: roda na tela de cadastro, antes de
--- existir login, e devolve apenas o nome da casa — errar o código não vaza
--- nada de útil.
-grant execute on function public.household_name_for_code(text) to anon, authenticated;
-
-grant execute on function public.join_household(text)        to authenticated;
-grant execute on function public.materialize_recurring(date) to authenticated;
-grant execute on function public.monthly_totals(date, date)  to authenticated;
-grant execute on function public.account_balances()          to authenticated;
-
--- Chamadas de dentro das policies de RLS, que são avaliadas com o papel de
--- quem está consultando.
-grant execute on function public.my_household_id()           to authenticated;
-grant execute on function public.is_household_member(uuid)   to authenticated;
-grant execute on function public.shares_household_with(uuid) to authenticated;
-
--- As demais ficam sem grant nenhum e isso é suficiente:
+-- Nada é liberado para `anon`: sem login, não há o que fazer neste app.
+--
+-- As demais ficam sem grant e isso basta:
 --   * gatilhos (handle_new_user, set_invoice_month, touch_updated_at) — o
 --     Postgres não exige EXECUTE do usuário para disparar um trigger;
---   * internas (seed_household, generate_invite_code) — são chamadas de
---     dentro de uma SECURITY DEFINER, cujo dono já tem permissão.
+--   * seed_user — é chamada de dentro de uma SECURITY DEFINER cujo dono já
+--     tem permissão.
+--
+-- send_message e broadcast_message são liberadas a todo usuário logado, mas
+-- checam is_admin() na primeira linha: quem não for admin leva SEM_PERMISSAO.
 
 -- Fecha o mesmo furo para qualquer função criada daqui para frente.
 alter default privileges in schema public revoke execute on functions from public;

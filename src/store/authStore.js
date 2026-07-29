@@ -6,8 +6,6 @@ export const useAuth = create((set, get) => ({
   carregando: true,
   sessao: null,
   perfil: null,
-  casa: null,
-  membros: [],
   // `trancado` é o PIN, não a sessão: você continua logado, só não vê a tela.
   trancado: false,
 
@@ -33,80 +31,52 @@ export const useAuth = create((set, get) => ({
 
   async aplicarSessao(sessao, { primeiraCarga = false } = {}) {
     if (!sessao) {
-      set({ sessao: null, perfil: null, casa: null, membros: [], carregando: false, trancado: false })
+      set({ sessao: null, perfil: null, carregando: false, trancado: false })
       return
     }
 
     set({ sessao })
-    await get().carregarCasa()
+    await get().carregarPerfil()
 
     set({
       carregando: false,
-      // Ao abrir o app já logado, o PIN vale. Depois de digitar a senha
-      // agora mesmo, exigir o PIN em seguida seria só atrito.
+      // Ao abrir o app já logado, o PIN vale. Depois de digitar a senha agora
+      // mesmo, exigir o PIN em seguida seria só atrito.
       trancado: primeiraCarga ? precisaDestrancar() : false,
     })
     if (!primeiraCarga) marcarAtividade()
   },
 
-  /** Carrega perfil, casa e os membros que dividem a casa com você. */
-  async carregarCasa() {
+  async carregarPerfil() {
     const uid = get().sessao?.user?.id
     if (!uid) return
 
-    const { data: vinculo } = await supabase
-      .from('household_members')
-      .select('household_id, role, households(id, name, invite_code)')
-      .eq('user_id', uid)
+    const { data: perfil } = await supabase
+      .from('profiles')
+      .select('id, display_name, email, emoji, role, created_at')
+      .eq('id', uid)
       .maybeSingle()
 
-    const casa = vinculo?.households
-      ? { ...vinculo.households, meuPapel: vinculo.role }
-      : null
-
-    const [{ data: perfil }, { data: membros }] = await Promise.all([
-      supabase.from('profiles').select('*').eq('id', uid).maybeSingle(),
-      casa
-        ? supabase
-            .from('household_members')
-            .select('user_id, role, joined_at, profiles(id, display_name, emoji)')
-            .eq('household_id', casa.id)
-        : Promise.resolve({ data: [] }),
-    ])
-
-    set({
-      perfil,
-      casa,
-      membros: (membros ?? []).map((m) => ({
-        id: m.user_id,
-        papel: m.role,
-        nome: m.profiles?.display_name ?? 'Alguém',
-        emoji: m.profiles?.emoji ?? '🙂',
-        souEu: m.user_id === uid,
-      })),
-    })
+    set({ perfil })
   },
+
+  /**
+   * O papel vem do banco, nunca de estado local: a interface esconder o menu
+   * de administração é conveniência, não segurança — quem barra de verdade
+   * são as policies e o GRANT por coluna que impede alterar `role`.
+   */
+  ehAdmin: () => get().perfil?.role === 'admin',
 
   async entrar(email, senha) {
     const { error } = await supabase.auth.signInWithPassword({ email, password: senha })
     if (error) throw error
   },
 
-  /**
-   * O nome e o código de convite viajam em `data`, que o Postgres recebe em
-   * raw_user_meta_data — é assim que o trigger handle_new_user() decide se
-   * cria uma casa nova ou entra na casa de quem convidou.
-   */
-  async cadastrar({ email, senha, nome, codigoConvite }) {
+  async cadastrar({ email, senha, nome }) {
     const { data, error } = await supabase.auth.signUp({
       email,
       password: senha,
-      options: {
-        data: {
-          display_name: nome,
-          invite_code: codigoConvite ? codigoConvite.trim().toUpperCase() : null,
-        },
-      },
+      options: { data: { display_name: nome } },
     })
     if (error) throw error
     // Sem sessão = o projeto está exigindo confirmação de e-mail.
@@ -115,13 +85,7 @@ export const useAuth = create((set, get) => ({
 
   async sair() {
     await supabase.auth.signOut()
-    set({ sessao: null, perfil: null, casa: null, membros: [] })
-  },
-
-  async entrarNaCasa(codigo) {
-    const { error } = await supabase.rpc('join_household', { p_code: codigo })
-    if (error) throw error
-    await get().carregarCasa()
+    set({ sessao: null, perfil: null })
   },
 
   async salvarPerfil({ nome, emoji }) {
@@ -131,7 +95,7 @@ export const useAuth = create((set, get) => ({
       .update({ display_name: nome, emoji })
       .eq('id', uid)
     if (error) throw error
-    await get().carregarCasa()
+    await get().carregarPerfil()
   },
 
   trancar: () => set({ trancado: pinConfigurado() }),

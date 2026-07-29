@@ -81,6 +81,25 @@ export function rotuloDataCompleta(iso) {
   return format(parseData(iso), "d 'de' MMMM 'de' yyyy", { locale: ptBR })
 }
 
+/**
+ * Rótulo para um `timestamptz` (created_at de mensagem, por exemplo).
+ *
+ * Aqui `new Date(iso)` é o certo, ao contrário do que acontece com colunas
+ * `date`: um timestamptz é um INSTANTE, e o JavaScript já o converte para o
+ * fuso local corretamente. Cortar a string com `.slice(0, 10)` seria o erro —
+ * ela vem em UTC, então uma mensagem enviada às 21h no Brasil apareceria como
+ * "Amanhã".
+ */
+export function rotuloMomento(iso) {
+  const d = new Date(iso)
+  const dias = differenceInCalendarDays(d, new Date())
+  const hora = format(d, 'HH:mm')
+  if (dias === 0) return `Hoje, ${hora}`
+  if (dias === -1) return `Ontem, ${hora}`
+  const texto = format(d, "d 'de' MMM, HH:mm", { locale: ptBR })
+  return texto.charAt(0).toUpperCase() + texto.slice(1)
+}
+
 /** Lista dos últimos N meses (mais antigo primeiro), para os relatórios. */
 export function ultimosMeses(quantidade, referencia = new Date()) {
   return Array.from({ length: quantidade }, (_, i) =>

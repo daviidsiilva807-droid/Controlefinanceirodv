@@ -4,12 +4,12 @@ import { useAuth } from '../store/authStore'
 import { inicioMesISO, mesDaChave } from '../lib/dates'
 
 export function useRecorrentes() {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const [regras, setRegras] = useState([])
   const [carregando, setCarregando] = useState(true)
 
   const buscar = useCallback(async () => {
-    if (!casaId) return
+    if (!userId) return
     const { data, error } = await supabase
       .from('recurring_rules')
       .select(`
@@ -20,7 +20,7 @@ export function useRecorrentes() {
       .order('day_of_month')
     if (!error) setRegras(data ?? [])
     setCarregando(false)
-  }, [casaId])
+  }, [userId])
 
   useEffect(() => {
     buscar()
@@ -70,12 +70,12 @@ export function useRecorrentes() {
  * o aluguel duas vezes.
  */
 export function useMaterializarRecorrentes(chave, aoCriar) {
-  const casaId = useAuth((s) => s.casa?.id)
+  const userId = useAuth((s) => s.sessao?.user?.id)
   const jaRodou = useRef(new Set())
 
   useEffect(() => {
-    if (!casaId || !chave) return
-    const marca = `${casaId}:${chave}`
+    if (!userId || !chave) return
+    const marca = `${userId}:${chave}`
     if (jaRodou.current.has(marca)) return
     jaRodou.current.add(marca)
 
@@ -84,5 +84,5 @@ export function useMaterializarRecorrentes(chave, aoCriar) {
       .then(({ data }) => {
         if (data > 0) aoCriar?.(data)
       })
-  }, [casaId, chave, aoCriar])
+  }, [userId, chave, aoCriar])
 }
