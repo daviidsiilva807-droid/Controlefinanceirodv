@@ -86,7 +86,11 @@ export function filtrarTransacoes(transacoes, { busca, contaId, categoriaId, tip
     if (situacao === 'pagos' && !t.paid) return false
     if (situacao === 'previstos' && t.paid) return false
     if (termo) {
-      const alvo = `${t.description} ${t.categories?.name ?? ''} ${t.accounts?.name ?? ''}`.toLowerCase()
+      // A observação entra na busca: quem anotou o número da nota fiscal
+      // espera encontrar o lançamento procurando por ele.
+      const alvo = `${t.description} ${t.notes ?? ''} ${t.categories?.name ?? ''} ${
+        t.accounts?.name ?? ''
+      }`.toLowerCase()
       if (!alvo.includes(termo)) return false
     }
     return true

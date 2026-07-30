@@ -8,7 +8,7 @@ import { addMonths, fimMesISO, inicioMesISO, mesDaChave, toISODate } from '../li
 // Sem `created_by`: com contas isoladas, todo lançamento é de quem está
 // logado — registrar o autor não diria nada.
 const SELECT = `
-  id, kind, amount_cents, description, date, paid, invoice_month,
+  id, kind, amount_cents, description, notes, date, paid, invoice_month,
   account_id, category_id, transfer_account_id,
   installment_group_id, installment_no, installment_total, recurring_rule_id,
   created_at,
@@ -83,6 +83,7 @@ export async function criarLancamento(dados) {
     kind,
     amount_cents,
     description,
+    notes = '',
     date,
     account_id,
     category_id,
@@ -100,6 +101,10 @@ export async function criarLancamento(dados) {
       kind,
       amount_cents: valor,
       description,
+      // A observação é copiada para todas as parcelas: ela descreve a compra
+      // inteira, e quem abre a parcela 7 de 10 meses depois precisa do
+      // contexto tanto quanto quem abriu a primeira.
+      notes,
       date: toISODate(addMonths(primeiraData, i)),
       account_id,
       category_id,
@@ -119,6 +124,7 @@ export async function criarLancamento(dados) {
     kind,
     amount_cents,
     description,
+    notes,
     date,
     account_id,
     category_id: kind === 'transfer' ? null : category_id,
@@ -135,6 +141,7 @@ export async function atualizarLancamento(id, dados) {
       kind: dados.kind,
       amount_cents: dados.amount_cents,
       description: dados.description,
+      notes: dados.notes ?? '',
       date: dados.date,
       account_id: dados.account_id,
       category_id: dados.kind === 'transfer' ? null : dados.category_id,

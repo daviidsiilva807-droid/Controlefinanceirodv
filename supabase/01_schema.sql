@@ -93,6 +93,11 @@ create table public.transactions (
   kind                 text   not null check (kind in ('expense', 'income', 'transfer')),
   amount_cents         bigint not null check (amount_cents > 0),
   description          text   not null default '',
+  -- Anotações longas (nota fiscal, o que foi combinado, por que o valor está
+  -- diferente do normal). Separado de `description` de propósito: a descrição
+  -- é curta e aparece na lista; a observação pode ter várias linhas e só é
+  -- lida ao abrir o lançamento. Um campo só quebraria a lista.
+  notes                text   not null default '',
   date                 date   not null,
   -- false = previsto/a pagar (conta futura, recorrente ainda não quitada)
   paid                 boolean not null default true,
@@ -124,6 +129,13 @@ create index transactions_mes_idx     on public.transactions (user_id, date desc
 create index transactions_cat_idx     on public.transactions (user_id, category_id, date);
 create index transactions_fatura_idx  on public.transactions (account_id, invoice_month) where invoice_month is not null;
 create index transactions_parcela_idx on public.transactions (installment_group_id) where installment_group_id is not null;
+
+-- Busca por trecho dentro da observação. GIN + pg_trgm porque a pessoa digita
+-- pedaços de palavra ("nota fis"), e índice B-tree não serve para LIKE '%…%'.
+create extension if not exists pg_trgm;
+create index transactions_notes_busca_idx
+  on public.transactions using gin (notes gin_trgm_ops)
+  where notes <> '';
 
 -- ------------------------------------------------------------- recorrentes
 

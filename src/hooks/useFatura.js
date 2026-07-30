@@ -3,7 +3,7 @@ import { supabase } from '../lib/supabase'
 import { assinarTabela } from '../lib/realtime'
 import { useAuth } from '../store/authStore'
 import { useDados } from '../store/dataStore'
-import { inicioMesISO, mesDaChave } from '../lib/dates'
+import { addMonths, inicioMesISO, mesDaChave } from '../lib/dates'
 
 /**
  * Fatura do cartão é uma visão diferente do mês.
@@ -30,17 +30,27 @@ export function useFatura(chave) {
   const buscar = useCallback(async () => {
     if (!userId || !chave) return
     setCarregando(true)
+
+    const mes = mesDaChave(chave)
+    const esteMes = inicioMesISO(mes)
+    const proximoMes = inicioMesISO(addMonths(mes, 1))
+
+    // Busca a fatura do mês E a do mês seguinte na mesma consulta. A segunda
+    // existe por um motivo de usabilidade concreto: com fechamento no dia 25,
+    // uma compra feita no dia 26 não aparece em lugar nenhum da tela do mês
+    // atual — e a pessoa conclui, com razão, que o app não registrou. Saber o
+    // total da próxima fatura permite avisar em vez de deixar no vácuo.
     const { data, error } = await supabase
       .from('transactions')
       .select(`
-        id, amount_cents, description, date, paid, account_id, category_id,
+        id, amount_cents, description, date, paid, account_id, category_id, invoice_month,
         installment_no, installment_total,
         categories ( id, name, icon, color )
       `)
-      .eq('invoice_month', inicioMesISO(mesDaChave(chave)))
+      .in('invoice_month', [esteMes, proximoMes])
       .order('date', { ascending: false })
 
-    if (!error) setItens(data ?? [])
+    if (!error) setItens((data ?? []).map((i) => ({ ...i, _proxima: i.invoice_month === proximoMes })))
     setCarregando(false)
   }, [userId, chave])
 
@@ -56,12 +66,18 @@ export function useFatura(chave) {
   /** Uma entrada por cartão, mesmo que a fatura esteja zerada no mês. */
   const faturas = useMemo(() => {
     return cartoes.map((cartao) => {
-      const lancamentos = itens.filter((i) => i.account_id === cartao.id)
+      const doCartao = itens.filter((i) => i.account_id === cartao.id)
+      const lancamentos = doCartao.filter((i) => !i._proxima)
+      const proximos = doCartao.filter((i) => i._proxima)
       const total = lancamentos.reduce((acc, i) => acc + i.amount_cents, 0)
+
       return {
         cartao,
         lancamentos,
         total,
+        // O que já caiu na fatura seguinte por causa do fechamento.
+        totalProxima: proximos.reduce((acc, i) => acc + i.amount_cents, 0),
+        qtdProxima: proximos.length,
         // Quanto do limite já está comprometido por esta fatura.
         percentualDoLimite: cartao.credit_limit_cents
           ? (total / cartao.credit_limit_cents) * 100
@@ -84,7 +100,7 @@ export function useParcelasFuturas() {
   const [parcelas, setParcelas] = useState([])
 
   useEffect(() => {
-    if (!casaId) return
+    if (!userId) return
     let ativo = true
 
     supabase

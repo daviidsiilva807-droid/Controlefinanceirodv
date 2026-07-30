@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Icone } from '../components/Icone'
 import {
+  AreaTexto,
   Aviso,
   Botao,
   BotaoIcone,
@@ -11,13 +12,15 @@ import {
   Folha,
   Segmentado,
   Selecao,
+  Vazio,
 } from '../components/ui'
+import { Link } from 'react-router-dom'
 import {
   atualizarLancamento,
   criarLancamento,
   excluirLancamento,
 } from '../hooks/useTransacoes'
-import { hojeISO } from '../lib/dates'
+import { addMonths, hojeISO, parseData, rotuloMes } from '../lib/dates'
 import { dividirParcelas, formatBRL } from '../lib/money'
 import { mensagemDeErro } from '../lib/supabase'
 import { useDados } from '../store/dataStore'
@@ -33,6 +36,7 @@ const estadoInicial = (transacao, contas) => ({
   kind: transacao.kind ?? 'expense',
   amount_cents: transacao.amount_cents ?? 0,
   description: transacao.description ?? '',
+  notes: transacao.notes ?? '',
   date: transacao.date ?? hojeISO(),
   account_id: transacao.account_id ?? contas[0]?.id ?? '',
   category_id: transacao.category_id ?? '',
@@ -130,6 +134,41 @@ export function FormLancamento() {
 
   const valorDaParcela = form.parcelas > 1 ? dividirParcelas(form.amount_cents, form.parcelas)[0] : 0
 
+  /**
+   * Mesma regra do trigger set_invoice_month() no banco: compra a partir do
+   * dia do fechamento entra na fatura do mês seguinte. Repetida aqui só para
+   * exibir o aviso — quem decide de verdade continua sendo o banco, para que
+   * relatório e fatura nunca discordem.
+   */
+  const faturaDestino = useMemo(() => {
+    if (!ehCartao || !form.date || !contaSelecionada?.closing_day) return null
+    const data = parseData(form.date)
+    const mesDaFatura =
+      data.getDate() >= contaSelecionada.closing_day ? addMonths(data, 1) : data
+    return rotuloMes(mesDaFatura)
+  }, [ehCartao, form.date, contaSelecionada])
+
+  // Sem nenhuma conta ativa não há o que lançar, e o formulário viraria um
+  // beco sem saída: o seletor de conta fica vazio e o erro só aparece ao
+  // tentar salvar. Acontece de verdade quando a pessoa arquiva ou apaga as
+  // contas que vieram por padrão.
+  if (!contas.length) {
+    return (
+      <Folha aberta aoFechar={fechar} titulo="Novo lançamento">
+        <Vazio
+          icone="carteira"
+          titulo="Nenhuma conta ativa"
+          mensagem="Todo lançamento precisa sair de uma conta. Crie uma conta ou reative uma arquivada para começar."
+          acao={
+            <Link to="/mais/contas" onClick={fechar}>
+              <Botao>Ir para Contas</Botao>
+            </Link>
+          }
+        />
+      </Folha>
+    )
+  }
+
   return (
     <>
       <Folha
@@ -217,7 +256,20 @@ export function FormLancamento() {
             </Campo>
           )}
 
-          <Campo rotulo="Descrição" dica="Opcional — ajuda a lembrar depois.">
+          {/* Fica logo abaixo de Conta e Data porque são esses dois campos que
+              determinam a fatura — o aviso precisa estar onde a decisão é
+              tomada, não no fim do formulário.
+              Sem ele a pessoa lança, abre a aba Cartões, não encontra nada e
+              conclui que o app perdeu o lançamento — quando ele foi para a
+              fatura seguinte, como manda a regra de fechamento. */}
+          {ehCartao && !ehTransferencia && faturaDestino && (
+            <Aviso tipo="info">
+              Entra na fatura de <strong>{faturaDestino}</strong>, porque{' '}
+              {contaSelecionada.name} fecha no dia {contaSelecionada.closing_day}.
+            </Aviso>
+          )}
+
+          <Campo rotulo="Descrição" dica="Opcional — é o texto que aparece na lista.">
             <Entrada
               value={form.description}
               onChange={(e) => mudar('description', e.target.value)}
@@ -225,6 +277,12 @@ export function FormLancamento() {
               maxLength={120}
             />
           </Campo>
+
+          {/* Observações fica recolhido por padrão: o campo é útil, mas usado
+              numa minoria dos lançamentos. Sempre visível, ele empurraria o
+              botão de salvar para fora da tela no celular e tornaria o
+              caminho comum mais lento. */}
+          <Observacoes valor={form.notes} aoMudar={(v) => mudar('notes', v)} />
 
           {/* Parcelamento: só aparece em cartão, e só na criação — dividir um
               lançamento que já existe mexeria em linhas de outros meses. */}
@@ -326,6 +384,59 @@ export function FormLancamento() {
         />
       )}
     </>
+  )
+}
+
+/**
+ * Campo de observações, recolhido quando está vazio.
+ *
+ * Abre sozinho se o lançamento já tem uma anotação — senão a pessoa editaria
+ * o lançamento sem perceber que existe um texto guardado ali.
+ */
+function Observacoes({ valor, aoMudar }) {
+  const [aberto, setAberto] = useState(Boolean(valor))
+
+  if (!aberto) {
+    return (
+      <button
+        onClick={() => setAberto(true)}
+        className="flex w-full items-center gap-2 rounded-xl border border-dashed border-slate-300
+          px-3.5 py-3 text-sm text-slate-500 transition-colors active:bg-slate-100
+          dark:border-slate-700 dark:text-slate-400 dark:active:bg-slate-800"
+      >
+        <Icone nome="mais" tamanho={16} />
+        Adicionar observações
+      </button>
+    )
+  }
+
+  return (
+    <Campo
+      rotulo="Observações"
+      dica="Nota fiscal, o que foi combinado, por que o valor mudou… As quebras de linha são preservadas."
+    >
+      <AreaTexto
+        value={valor}
+        onChange={(e) => aoMudar(e.target.value)}
+        linhas={4}
+        maxLength={2000}
+        placeholder="Anote aqui o que você vai querer lembrar depois…"
+        autoFocus={!valor}
+      />
+      <div className="mt-1 flex items-center justify-between">
+        <span className="text-[11px] text-slate-400 dark:text-slate-500">
+          {valor.length}/2000
+        </span>
+        {valor.length === 0 && (
+          <button
+            onClick={() => setAberto(false)}
+            className="text-[11px] text-slate-500 dark:text-slate-400"
+          >
+            cancelar
+          </button>
+        )}
+      </div>
+    </Campo>
   )
 }
 

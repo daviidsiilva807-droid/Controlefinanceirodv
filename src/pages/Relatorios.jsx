@@ -96,7 +96,7 @@ export function Relatorios() {
       const { data, error } = await supabase
         .from('transactions')
         .select(`
-          date, kind, amount_cents, description, paid,
+          date, kind, amount_cents, description, notes, paid,
           installment_no, installment_total,
           categories ( name ),
           accounts!transactions_account_id_fkey ( name )
@@ -215,6 +215,7 @@ function baixarCSV(linhas, nomeArquivo) {
     'Valor',
     'Situação',
     'Parcela',
+    'Observações',
   ]
 
   const escapar = (v) => `"${String(v ?? '').replace(/"/g, '""')}"`
@@ -229,6 +230,9 @@ function baixarCSV(linhas, nomeArquivo) {
       (t.amount_cents / 100).toFixed(2).replace('.', ','),
       t.paid ? 'Pago' : 'Previsto',
       t.installment_total > 1 ? `${t.installment_no}/${t.installment_total}` : '',
+      // Vem por último porque é o campo mais longo — assim as colunas úteis
+      // ficam visíveis sem rolar a planilha para o lado.
+      t.notes ?? '',
     ]
       .map(escapar)
       .join(';')

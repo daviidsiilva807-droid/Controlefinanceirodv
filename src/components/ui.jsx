@@ -99,6 +99,16 @@ export function Selecao({ className = '', children, ...props }) {
   )
 }
 
+export function AreaTexto({ className = '', linhas = 4, ...props }) {
+  return (
+    <textarea
+      rows={linhas}
+      className={`${ESTILO_ENTRADA} resize-y py-2.5 text-sm leading-relaxed ${className}`}
+      {...props}
+    />
+  )
+}
+
 /**
  * Campo de dinheiro no modelo "caixa de supermercado": a pessoa digita só
  * dígitos e eles preenchem da direita para a esquerda (1 → 0,01; 12 → 0,12;

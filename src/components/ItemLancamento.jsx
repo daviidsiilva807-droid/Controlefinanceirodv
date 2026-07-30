@@ -43,6 +43,16 @@ export function ItemLancamento({ transacao: t, aoClicar, mostrarConta = true }) 
           {t.recurring_rule_id && (
             <Icone nome="repetir" tamanho={12} className="shrink-0 text-slate-400" />
           )}
+          {/* Sem este indicador a observação some: ela não cabe na lista, e a
+              pessoa não teria como saber que existe algo escrito ali dentro. */}
+          {t.notes?.trim() && (
+            <Icone
+              nome="nota"
+              tamanho={12}
+              className="shrink-0 text-slate-400"
+              aria-label="Tem observações"
+            />
+          )}
         </span>
         <span className="mt-0.5 flex items-center gap-1 text-xs text-slate-500 dark:text-slate-400">
           <span className="truncate">

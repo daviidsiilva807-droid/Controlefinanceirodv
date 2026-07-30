@@ -6,13 +6,14 @@ import { SeletorMes } from '../components/SeletorMes'
 import { Barra, Botao, Cartao, Esqueleto, Etiqueta, TituloSecao, Vazio } from '../components/ui'
 import { useFatura, useParcelasFuturas } from '../hooks/useFatura'
 import { useMemo } from 'react'
-import { diasAte, mesDaChave, rotuloMesCurto } from '../lib/dates'
+import { addMonths, chaveMes, diasAte, mesDaChave, rotuloMesCurto } from '../lib/dates'
 import { formatBRL } from '../lib/money'
 import { useDados } from '../store/dataStore'
 import { useUI } from '../store/uiStore'
 
 export function Cartoes() {
   const mes = useUI((s) => s.mes)
+  const definirMes = useUI((s) => s.definirMes)
   const abrirForm = useUI((s) => s.abrirForm)
   const contas = useDados((s) => s.contas)
   const cartoes = useMemo(
@@ -57,7 +58,13 @@ export function Cartoes() {
         {carregando
           ? [0, 1].map((i) => <Esqueleto key={i} className="h-40" />)
           : faturas.map((fatura) => (
-              <FaturaDoCartao key={fatura.cartao.id} fatura={fatura} aoClicarItem={abrirForm} />
+              <FaturaDoCartao
+                key={fatura.cartao.id}
+                fatura={fatura}
+                aoClicarItem={abrirForm}
+                mes={mes}
+                aoVerProxima={() => definirMes(chaveMes(addMonths(mesDaChave(mes), 1)))}
+              />
             ))}
 
         {/* O "já comprometido" que o saldo de hoje não mostra — é a diferença
@@ -99,8 +106,8 @@ export function Cartoes() {
   )
 }
 
-function FaturaDoCartao({ fatura, aoClicarItem }) {
-  const { cartao, lancamentos, total, percentualDoLimite } = fatura
+function FaturaDoCartao({ fatura, aoClicarItem, mes, aoVerProxima }) {
+  const { cartao, lancamentos, total, percentualDoLimite, totalProxima, qtdProxima } = fatura
   const diasParaFechar = diasAte(cartao.closing_day)
   const diasParaVencer = diasAte(cartao.due_day)
 
@@ -139,6 +146,27 @@ function FaturaDoCartao({ fatura, aoClicarItem }) {
             </div>
             <Barra percentual={percentualDoLimite} nivel={nivelLimite} />
           </div>
+        )}
+
+        {/* Sem este aviso, uma compra feita depois do fechamento simplesmente
+            não aparece em lugar nenhum da tela do mês, e a conclusão natural é
+            que o app não registrou. O comportamento está certo; o que faltava
+            era dizer para onde a compra foi. */}
+        {totalProxima > 0 && (
+          <button
+            onClick={aoVerProxima}
+            className="mt-4 flex w-full items-start gap-2 rounded-xl border border-sky-200 bg-sky-50
+              p-3 text-left text-xs text-sky-900 dark:border-sky-900 dark:bg-sky-950/50
+              dark:text-sky-200"
+          >
+            <Icone nome="info" tamanho={16} className="mt-0.5 shrink-0" />
+            <span>
+              {qtdProxima} compra{qtdProxima > 1 ? 's' : ''} de{' '}
+              <strong>{formatBRL(totalProxima)}</strong> caiu na fatura de{' '}
+              <strong>{rotuloMesCurto(addMonths(mesDaChave(mes), 1))}</strong>, porque o cartão fecha
+              dia {cartao.closing_day}. Toque para ver.
+            </span>
+          </button>
         )}
 
         {lancamentos.length === 0 ? (

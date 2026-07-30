@@ -1,7 +1,7 @@
 import { useState } from 'react'
 import { CabecalhoVoltar } from '../components/AppShell'
 import { Icone } from '../components/Icone'
-import { Botao, Cartao, Esqueleto, Etiqueta, Folha, Vazio } from '../components/ui'
+import { Botao, Esqueleto, Etiqueta, Folha, Vazio } from '../components/ui'
 import { useMensagens } from '../hooks/useMensagens'
 import { rotuloMomento } from '../lib/dates'
 

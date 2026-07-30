@@ -116,7 +116,8 @@ Isso só funciona pelo SQL Editor de propósito: o app não tem como alterar o c
 ## O que o app faz
 
 - **Lançamentos** — despesa, receita e transferência; valor com teclado numérico estilo caixa de
-  supermercado; categoria em grade de ícones; marcação de *pago* × *previsto*.
+  supermercado; categoria em grade de ícones; marcação de *pago* × *previsto*; campo de
+  **observações** para anotações longas (aparece como ícone na lista, entra na busca e no CSV).
 - **Cartão de crédito** — fatura calculada pelo dia de fechamento (compra a partir do dia do
   fechamento cai na fatura seguinte), limite usado e **parcelamento** que distribui a compra pelos
   meses seguintes sem perder centavo.
@@ -156,6 +157,18 @@ cabeça é regra que ninguém consegue auditar.
 um mesmo tópico; dois componentes usando o mesmo hook fariam o segundo chamar `.on()` num canal já
 assinado, e o erro derruba a tela inteira. Veja [`src/lib/realtime.js`](src/lib/realtime.js).
 
+**`npm run checar` existe por causa de tela branca.** Um erro de renderização derruba a árvore
+inteira do React e a página fica vazia, sem mensagem — o `vite build` não acusa nada disso, porque
+ele empacota e sobe feliz com uma variável indefinida no meio. Já aconteceu duas vezes aqui (um
+`casaId` esquecido numa refatoração e um `useMemo` depois de um `return` condicional). O ESLint pega
+as duas antes de subir, e o [`LimiteDeErro`](src/components/LimiteDeErro.jsx) garante que, se algo
+passar, o usuário veja uma mensagem em vez de nada.
+
+**Compra depois do fechamento avisa para onde foi.** Num cartão que fecha dia 25, a compra do dia 26
+entra na fatura do mês seguinte. Isso é o correto, mas sem aviso a pessoa lança, não encontra o valor
+na aba Cartões e conclui que o app perdeu o lançamento. Por isso o formulário informa a fatura de
+destino no momento da compra, e a fatura vazia mostra quanto caiu na próxima.
+
 **O PIN é uma tranca, não criptografia.** Ele impede que alguém com seu celular *já desbloqueado*
 abra o app. Ele não criptografa nada e não substitui o login. Isso está dito na própria tela de
 Segurança, porque a confusão contrária é perigosa.
@@ -179,6 +192,7 @@ linha tem emoji, nome e valor — a cor nunca é a única forma de identificar a
 | `npm run dev` | Servidor de desenvolvimento |
 | `npm run build` | Build de produção |
 | `npm run preview` | Serve o build — **o service worker só existe aqui**, não no `dev` |
+| `npm run checar` | ESLint — pega variável indefinida e hook mal usado |
 | `npm run verificar` | Testa as funções de dinheiro, datas e agregações |
 | `npm run icones` | Regenera ícones e splash screens do PWA |
 

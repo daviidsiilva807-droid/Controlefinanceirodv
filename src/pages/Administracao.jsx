@@ -3,6 +3,7 @@ import { Navigate } from 'react-router-dom'
 import { CabecalhoVoltar } from '../components/AppShell'
 import { Icone } from '../components/Icone'
 import {
+  AreaTexto,
   Aviso,
   Botao,
   Campo,
@@ -41,11 +42,6 @@ export function Administracao() {
   const [destinatario, setDestinatario] = useState(null) // usuário | 'todos'
   const [busca, setBusca] = useState('')
 
-  // A rota é escondida do menu para quem não é admin, mas a guarda precisa
-  // existir aqui também — esconder link não é controle de acesso. A barreira
-  // real, de qualquer forma, está no RLS e no is_admin() do banco.
-  if (!ehAdmin) return <Navigate to="/" replace />
-
   const filtrados = useMemo(() => {
     const termo = busca.trim().toLowerCase()
     if (!termo) return usuarios
@@ -56,6 +52,16 @@ export function Administracao() {
   }, [usuarios, busca])
 
   const outros = filtrados.filter((u) => u.id !== meuId)
+
+  // A guarda vem DEPOIS de todos os hooks, e isso não é preferência de
+  // estilo: o perfil carrega de forma assíncrona, então o primeiro render
+  // ainda não sabe que você é admin. Com o `return` antes do useMemo, a
+  // quantidade de hooks mudaria entre um render e outro e o React derrubaria
+  // a árvore inteira — tela branca, sem mensagem.
+  //
+  // Esconder a rota do menu é conveniência; quem barra de verdade é o RLS.
+  if (!ehAdmin) return <Navigate to="/" replace />
+
 
   return (
     <>
@@ -245,16 +251,12 @@ function FolhaEnviar({ destinatario, quantidade, aoFechar, aoEnviar }) {
         </Campo>
 
         <Campo rotulo="Mensagem" dica="Opcional. As quebras de linha são preservadas.">
-          <textarea
+          <AreaTexto
             value={corpo}
             onChange={(e) => setCorpo(e.target.value)}
-            rows={6}
+            linhas={6}
             maxLength={2000}
             placeholder="Escreva aqui…"
-            className="w-full rounded-xl border border-slate-300 bg-white px-3.5 py-2.5 text-sm
-              text-slate-900 placeholder:text-slate-400 focus:border-brand-500
-              focus:ring-2 focus:ring-brand-500/30 focus:outline-none dark:border-slate-700
-              dark:bg-slate-900 dark:text-slate-100 dark:placeholder:text-slate-500"
           />
         </Campo>
 
