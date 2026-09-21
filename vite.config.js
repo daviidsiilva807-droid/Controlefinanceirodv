@@ -35,6 +35,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['/push-sw.js'],
         globPatterns: ['**/*.{js,css,html,png,svg,woff2}'],
         navigateFallback: '/index.html',
         // As chamadas ao Supabase nunca são servidas do cache: dado financeiro

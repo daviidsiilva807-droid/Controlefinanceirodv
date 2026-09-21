@@ -75,6 +75,12 @@ begin
   values
     (v_user, v_corrente, c_moradia, 'expense', 180000, 'Aluguel', 5);
 
+  insert into public.subscriptions (user_id, name, type, amount_cents, billing_day)
+  values
+    (v_user, 'Netflix',      'streaming', 3990,  10),
+    (v_user, 'ChatGPT Plus', 'ia',        9990,  15),
+    (v_user, 'Plano de saúde', 'saude',   45000,  5);
+
   insert into public.budgets (user_id, category_id, month, limit_cents)
   values
     (v_user, c_aliment, v_mes,  50000),
@@ -99,6 +105,7 @@ $$;
 --    select id into v_user from public.profiles order by created_at limit 1;
 --    delete from public.transactions    where user_id = v_user;
 --    delete from public.recurring_rules where user_id = v_user;
+--    delete from public.subscriptions   where user_id = v_user;
 --    delete from public.budgets         where user_id = v_user;
 --    delete from public.accounts        where user_id = v_user and type = 'cartao';
 --  end $$;

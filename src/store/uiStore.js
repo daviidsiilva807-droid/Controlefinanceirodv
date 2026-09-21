@@ -2,38 +2,67 @@ import { create } from 'zustand'
 import { chaveMes } from '../lib/dates'
 
 const CHAVE_TEMA = 'cf.tema'
+const CHAVE_MODO = 'cf.modo'
+const TEMAS = ['verde', 'vinho', 'azul', 'neon']
 
-function temaInicial() {
-  const salvo = localStorage.getItem(CHAVE_TEMA)
-  if (salvo === 'claro' || salvo === 'escuro') return salvo
-  return window.matchMedia('(prefers-color-scheme: light)').matches ? 'claro' : 'escuro'
+function preferenciasIniciais() {
+  const temaSalvo = localStorage.getItem(CHAVE_TEMA)
+  const modoSalvo = localStorage.getItem(CHAVE_MODO)
+  return {
+    tema: TEMAS.includes(temaSalvo) ? temaSalvo : 'verde',
+    modo: modoSalvo === 'claro' || modoSalvo === 'escuro'
+      ? modoSalvo
+      : window.matchMedia('(prefers-color-scheme: light)').matches
+        ? 'claro'
+        : 'escuro',
+  }
 }
 
-function aplicarTema(tema) {
-  document.documentElement.classList.toggle('dark', tema === 'escuro')
-  // Mantém a barra de status do celular na cor certa quando instalado.
+function aplicarTema(tema, modo) {
+  document.documentElement.classList.remove('tema-verde', 'tema-vinho', 'tema-azul', 'tema-neon')
+  document.documentElement.classList.add(`tema-${tema}`)
+  document.documentElement.classList.toggle('dark', modo === 'escuro')
   document
     .querySelector('meta[name="theme-color"]')
-    ?.setAttribute('content', tema === 'escuro' ? '#020617' : '#059669')
+    ?.setAttribute(
+      'content',
+      modo === 'escuro'
+        ? '#020617'
+        : tema === 'vinho'
+          ? '#9F2D45'
+          : tema === 'azul'
+            ? '#0FA3B1'
+            : tema === 'neon'
+              ? '#00D77B'
+              : '#0F766E'
+    )
 }
 
 export const useUI = create((set, get) => ({
-  tema: 'escuro',
+  tema: 'verde',
+  modo: 'escuro',
   // Mês em foco no app inteiro: dashboard, lista, orçamentos e cartões
   // andam juntos, então o estado é um só.
   mes: chaveMes(new Date()),
   toast: null,
 
   iniciarTema() {
-    const tema = temaInicial()
-    aplicarTema(tema)
-    set({ tema })
+    const preferencias = preferenciasIniciais()
+    aplicarTema(preferencias.tema, preferencias.modo)
+    set(preferencias)
   },
 
   alternarTema() {
-    const tema = get().tema === 'escuro' ? 'claro' : 'escuro'
+    const modo = get().modo === 'escuro' ? 'claro' : 'escuro'
+    localStorage.setItem(CHAVE_MODO, modo)
+    aplicarTema(get().tema, modo)
+    set({ modo })
+  },
+
+  definirTema(tema) {
+    if (!TEMAS.includes(tema)) return
     localStorage.setItem(CHAVE_TEMA, tema)
-    aplicarTema(tema)
+    aplicarTema(tema, get().modo)
     set({ tema })
   },
 

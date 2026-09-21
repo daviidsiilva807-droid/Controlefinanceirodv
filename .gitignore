@@ -12,3 +12,6 @@ yarn-error.log*
 dev-dist
 dist-test
 .vercel
+
+# Configuracao pessoal do Claude Code (nao versionar)
+.claude/settings.local.json

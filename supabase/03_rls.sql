@@ -14,7 +14,12 @@ alter table public.categories      enable row level security;
 alter table public.transactions    enable row level security;
 alter table public.budgets         enable row level security;
 alter table public.recurring_rules enable row level security;
+alter table public.subscriptions   enable row level security;
+alter table public.loans           enable row level security;
 alter table public.messages        enable row level security;
+alter table public.push_subscriptions enable row level security;
+alter table public.notification_settings enable row level security;
+alter table public.notification_deliveries enable row level security;
 
 -- ---------------------------------------------------------------- perfis
 
@@ -62,6 +67,16 @@ create policy recurring_rules_all on public.recurring_rules
   using (user_id = auth.uid())
   with check (user_id = auth.uid());
 
+create policy subscriptions_all on public.subscriptions
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy loans_all on public.loans
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 -- -------------------------------------------------------------- mensagens
 
 -- Você lê o que recebeu; o admin lê o que enviou (para ter histórico).
@@ -84,6 +99,16 @@ create policy messages_delete on public.messages
   for delete to authenticated
   using (to_user_id = auth.uid() or public.is_admin());
 
+create policy push_subscriptions_all on public.push_subscriptions
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
+create policy notification_settings_all on public.notification_settings
+  for all to authenticated
+  using (user_id = auth.uid())
+  with check (user_id = auth.uid());
+
 -- ----------------------------------------------------------------- grants
 --
 -- RLS filtra linhas; o GRANT decide se o papel pode tocar na tabela e em
@@ -92,7 +117,8 @@ create policy messages_delete on public.messages
 
 revoke all on public.profiles, public.accounts, public.categories,
               public.transactions, public.budgets, public.recurring_rules,
-              public.messages
+              public.subscriptions, public.messages, public.push_subscriptions,
+              public.notification_settings, public.loans
   from anon, authenticated;
 
 -- Sem isto, qualquer usuário rodaria
@@ -105,9 +131,11 @@ grant update (display_name, emoji)  on public.profiles to authenticated;
 
 grant select, insert, update, delete on
   public.accounts, public.categories, public.transactions,
-  public.budgets, public.recurring_rules
+  public.budgets, public.recurring_rules, public.subscriptions, public.loans
   to authenticated;
 
 -- Mensagem: ler, marcar como lida e apagar. Nunca inserir nem editar o texto.
 grant select, delete    on public.messages to authenticated;
 grant update (read_at)  on public.messages to authenticated;
+grant select, insert, update, delete on public.push_subscriptions to authenticated;
+grant select, insert, update, delete on public.notification_settings to authenticated;

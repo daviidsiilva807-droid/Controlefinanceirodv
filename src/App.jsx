@@ -20,10 +20,15 @@ import { Mais } from './pages/Mais'
 import { Contas } from './pages/Contas'
 import { Categorias } from './pages/Categorias'
 import { Recorrentes } from './pages/Recorrentes'
+import { Assinaturas } from './pages/Assinaturas'
 import { Perfil } from './pages/Perfil'
 import { Seguranca } from './pages/Seguranca'
 import { Mensagens } from './pages/Mensagens'
 import { Administracao } from './pages/Administracao'
+import { Desafios } from './pages/Desafios'
+import { Temas } from './pages/Temas'
+import { Notificacoes } from './pages/Notificacoes'
+import { Emprestimos } from './pages/Emprestimos'
 
 export default function App() {
   const iniciarTema = useUI((s) => s.iniciarTema)
@@ -77,13 +82,18 @@ export default function App() {
         <Route path="cartoes" element={<Cartoes />} />
         <Route path="orcamentos" element={<Orcamentos />} />
         <Route path="relatorios" element={<Relatorios />} />
+        <Route path="desafios" element={<Desafios />} />
         <Route path="mensagens" element={<Mensagens />} />
         <Route path="mais" element={<Mais />} />
         <Route path="mais/contas" element={<Contas />} />
         <Route path="mais/categorias" element={<Categorias />} />
         <Route path="mais/recorrentes" element={<Recorrentes />} />
+        <Route path="mais/assinaturas" element={<Assinaturas />} />
         <Route path="mais/perfil" element={<Perfil />} />
         <Route path="mais/seguranca" element={<Seguranca />} />
+        <Route path="mais/temas" element={<Temas />} />
+        <Route path="mais/notificacoes" element={<Notificacoes />} />
+        <Route path="mais/emprestimos" element={<Emprestimos />} />
         {/* A guarda de admin fica dentro da própria tela: esconder o link do
             menu é conveniência, não controle de acesso. */}
         <Route path="mais/administracao" element={<Administracao />} />

@@ -31,6 +31,11 @@ arquivos da pasta [`supabase/`](supabase/) **nesta ordem**:
 | [`02_functions.sql`](supabase/02_functions.sql) | Triggers, cadastro, fatura do cartão e RPCs |
 | [`03_rls.sql`](supabase/03_rls.sql) | **Row Level Security — não pule este** |
 | [`04_dados_exemplo.sql`](supabase/04_dados_exemplo.sql) | Opcional: dados de teste |
+| [`05_migracao_emprestimos_notificacoes.sql`](supabase/05_migracao_emprestimos_notificacoes.sql) | Migration segura para projeto já existente |
+
+Se o projeto já está em uso, execute apenas o arquivo [`05_migracao_emprestimos_notificacoes.sql`](supabase/05_migracao_emprestimos_notificacoes.sql)
+para adicionar empréstimos e notificações sem apagar os dados existentes. Não execute novamente o
+`01_schema.sql` ou `03_rls.sql` completos em um banco já configurado.
 
 Em seguida, **Authentication → Sign In / Providers → Email** e desligue **Confirm email**.
 
@@ -58,6 +63,7 @@ painel mostrar. **Nunca** use a chave *secret* / *service_role*: ela ignora o RL
 ```
 VITE_SUPABASE_URL=https://xxxxx.supabase.co
 VITE_SUPABASE_ANON_KEY=sb_publishable_...
+VITE_VAPID_PUBLIC_KEY=cole_aqui_a_chave_publica
 ```
 
 ```bash
@@ -75,6 +81,23 @@ npx vercel
 
 Cadastre as duas variáveis de ambiente no painel da Vercel (Settings → Environment Variables) e
 refaça o deploy. HTTPS vem automático — e HTTPS é requisito para o PWA instalar.
+
+### Notificações de faturas
+
+Depois de executar o SQL, gere um par de chaves VAPID e publique a função de envio:
+
+```bash
+npx web-push generate-vapid-keys
+supabase functions deploy enviar-notificacoes
+```
+
+Configure `VITE_VAPID_PUBLIC_KEY` na Vercel. Nos secrets da Edge Function, configure `VAPID_EMAIL`,
+`VAPID_PUBLIC_KEY`, `VAPID_PRIVATE_KEY` e `CRON_SECRET`. A chave privada deve existir somente nos
+secrets do Supabase, nunca no frontend.
+
+Por fim, crie um job diário no Supabase Cron para chamar `enviar-notificacoes` com o header
+`Authorization: Bearer <CRON_SECRET>`. No app, acesse **Mais → Notificações** e ative o recebimento
+no celular. O Service Worker mostra os avisos mesmo quando o PWA estiver fechado.
 
 ---
 
@@ -121,8 +144,10 @@ Isso só funciona pelo SQL Editor de propósito: o app não tem como alterar o c
 - **Cartão de crédito** — fatura calculada pelo dia de fechamento (compra a partir do dia do
   fechamento cai na fatura seguinte), limite usado e **parcelamento** que distribui a compra pelos
   meses seguintes sem perder centavo.
-- **Contas recorrentes** — aluguel, assinaturas e mensalidades lançados sozinhos todo mês como
-  previstos.
+- **Contas recorrentes** — aluguel, mensalidades e afins lançados sozinhos todo mês como previstos.
+- **Assinaturas** — catálogo das assinaturas ativas (streaming, IA, plano de saúde e mais) com o
+  total mensal visível no dashboard. Diferente das contas recorrentes, não lança nada no extrato —
+  é só um controle do que está sendo cobrado todo mês.
 - **Orçamentos** — limite por categoria, alerta em 80% e 100%, cópia do mês anterior e projeção de
   fechamento no ritmo atual.
 - **Relatórios** — evolução de 6/12 meses, comparativo com o mês anterior, ranking de categorias e
@@ -231,7 +256,7 @@ scripts/           Geração de ícones e verificação das funções puras
 src/
   lib/             money · dates · pin · supabase · realtime · resumo (regras puras)
   store/           auth · dados (contas/categorias) · ui (tema, mês, toast)
-  hooks/           transações · saldos · fatura · orçamentos · recorrentes · mensagens
+  hooks/           transações · saldos · fatura · orçamentos · recorrentes · assinaturas · mensagens
   components/      UI, gráficos, shell e navegação
   pages/           Uma tela por arquivo
 ```

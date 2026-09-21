@@ -160,6 +160,47 @@ alter table public.transactions
 
 create index recurring_user_idx on public.recurring_rules (user_id) where active;
 
+-- ------------------------------------------------------------ assinaturas
+--
+-- Diferente de recurring_rules (que lança sozinha no extrato todo mês), esta
+-- tabela é só um catálogo do que está ativo: nome, tipo e valor mensal — sem
+-- exigir conta nem categoria — para o dashboard somar o gasto recorrente.
+
+create table public.subscriptions (
+  id           uuid primary key default gen_random_uuid(),
+  user_id      uuid   not null default auth.uid() references auth.users (id) on delete cascade,
+  name         text   not null check (length(trim(name)) > 0),
+  type         text   not null check (type in (
+                 'streaming', 'musica', 'ia', 'saude', 'academia',
+                 'nuvem', 'software', 'jogos', 'educacao', 'noticias', 'outro'
+               )),
+  amount_cents bigint not null check (amount_cents > 0),
+  -- Opcional: dia em que a cobrança costuma cair. Limitado a 28 pelo mesmo
+  -- motivo do recurring_rules — vale em todos os meses, inclusive fevereiro.
+  billing_day  smallint check (billing_day between 1 and 28),
+  notes        text   not null default '',
+  active       boolean not null default true,
+  created_at   timestamptz not null default now()
+);
+
+create index subscriptions_user_idx on public.subscriptions (user_id) where active;
+
+-- ----------------------------------------------------------- empréstimos
+
+create table public.loans (
+  id                       uuid primary key default gen_random_uuid(),
+  user_id                  uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  name                     text not null check (length(trim(name)) > 0),
+  amount_cents             bigint not null check (amount_cents > 0),
+  installments             smallint not null check (installments between 1 and 360),
+  installment_amount_cents bigint not null check (installment_amount_cents > 0),
+  active                   boolean not null default true,
+  created_at               timestamptz not null default now(),
+  updated_at               timestamptz not null default now()
+);
+
+create index loans_user_idx on public.loans (user_id) where active;
+
 -- ---------------------------------------------------------------- orçamentos
 
 create table public.budgets (
@@ -200,6 +241,42 @@ create table public.messages (
 -- tenho?", e ela só olha as linhas com read_at nulo.
 create index messages_nao_lidas_idx on public.messages (to_user_id) where read_at is null;
 create index messages_caixa_idx     on public.messages (to_user_id, created_at desc);
+
+-- --------------------------------------------------------- notificações push
+
+create table public.push_subscriptions (
+  id         uuid primary key default gen_random_uuid(),
+  user_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  endpoint   text not null unique,
+  p256dh     text not null,
+  auth       text not null,
+  created_at timestamptz not null default now(),
+  updated_at timestamptz not null default now()
+);
+
+create index push_subscriptions_user_idx on public.push_subscriptions (user_id);
+
+create table public.notification_settings (
+  user_id        uuid primary key default auth.uid() references auth.users (id) on delete cascade,
+  enabled        boolean not null default false,
+  days_before   smallint not null default 3 check (days_before between 0 and 30),
+  notify_closing boolean not null default true,
+  notify_due     boolean not null default true,
+  updated_at     timestamptz not null default now()
+);
+
+create table public.notification_deliveries (
+  id              uuid primary key default gen_random_uuid(),
+  user_id         uuid not null references auth.users (id) on delete cascade,
+  account_id      uuid not null references public.accounts (id) on delete cascade,
+  event           text not null check (event in ('closing', 'due')),
+  reference_date  date not null,
+  days_before     smallint not null,
+  sent_at         timestamptz not null default now(),
+  unique (user_id, account_id, event, reference_date, days_before)
+);
+
+create index notification_deliveries_date_idx on public.notification_deliveries (reference_date);
 
 -- ---------------------------------------------------------------- realtime
 

@@ -14,13 +14,20 @@ const SECOES = [
     itens: [
       { para: '/orcamentos', icone: 'alvo', rotulo: 'Orçamentos', descricao: 'Limites por categoria' },
       { para: '/relatorios', icone: 'grafico', rotulo: 'Relatórios', descricao: 'Evolução e exportação' },
+      { para: '/desafios', icone: 'alvo', rotulo: 'Desafios', descricao: 'Metas de economia' },
       { para: '/mais/contas', icone: 'carteira', rotulo: 'Contas e cartões', descricao: 'Saldos e limites' },
       { para: '/mais/categorias', icone: 'filtro', rotulo: 'Categorias', descricao: 'Cores e ícones' },
       {
         para: '/mais/recorrentes',
         icone: 'repetir',
         rotulo: 'Contas recorrentes',
-        descricao: 'Aluguel, assinaturas…',
+        descricao: 'Aluguel, mensalidades…',
+      },
+      {
+        para: '/mais/assinaturas',
+        icone: 'calendario',
+        rotulo: 'Assinaturas',
+        descricao: 'Streaming, IA, plano de saúde…',
       },
     ],
   },
@@ -29,6 +36,8 @@ const SECOES = [
     itens: [
       { para: '/mais/perfil', icone: 'pessoas', rotulo: 'Perfil', descricao: 'Nome e avatar' },
       { para: '/mais/seguranca', icone: 'cadeado', rotulo: 'Bloqueio do app', descricao: 'PIN e biometria' },
+      { para: '/mais/notificacoes', icone: 'sino', rotulo: 'Notificações', descricao: 'Lembretes de faturas' },
+      { para: '/mais/emprestimos', icone: 'carteira', rotulo: 'Empréstimos', descricao: 'Parcelas e compromissos' },
     ],
   },
 ]
@@ -37,7 +46,7 @@ export function Mais() {
   const perfil = useAuth((s) => s.perfil)
   const sessao = useAuth((s) => s.sessao)
   const sair = useAuth((s) => s.sair)
-  const tema = useUI((s) => s.tema)
+  const modo = useUI((s) => s.modo)
   const alternarTema = useUI((s) => s.alternarTema)
   const naoLidas = useNaoLidas()
   const [confirmarSaida, setConfirmarSaida] = useState(false)
@@ -157,16 +166,32 @@ export function Mais() {
         ))}
 
         <Cartao className="p-0">
+          <Link
+            to="/mais/temas"
+            className="flex items-center gap-3 rounded-2xl px-4 py-3 transition-colors active:bg-slate-100 dark:active:bg-slate-800"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              <Icone nome="paleta" tamanho={18} />
+            </span>
+            <span className="flex-1 text-left">
+              <span className="block text-sm font-medium">Temas</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">Escolha a cor do app</span>
+            </span>
+            <Icone nome="direita" tamanho={18} className="shrink-0 text-slate-400" />
+          </Link>
+        </Cartao>
+
+        <Cartao className="p-0">
           <button
             onClick={alternarTema}
             className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 transition-colors
               active:bg-slate-100 dark:active:bg-slate-800"
           >
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
-              <Icone nome={tema === 'escuro' ? 'lua' : 'sol'} tamanho={18} />
+              <Icone nome={modo === 'escuro' ? 'lua' : 'sol'} tamanho={18} />
             </span>
             <span className="flex-1 text-left text-sm font-medium">
-              Tema {tema === 'escuro' ? 'escuro' : 'claro'}
+              Modo {modo === 'escuro' ? 'escuro' : 'claro'}
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400">tocar para trocar</span>
           </button>
