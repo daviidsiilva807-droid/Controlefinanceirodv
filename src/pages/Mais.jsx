@@ -2,7 +2,7 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cabecalho } from '../components/AppShell'
 import { Icone } from '../components/Icone'
-import { Botao, Cartao, Confirmacao, Etiqueta } from '../components/ui'
+import { Botao, Cartao, Confirmacao, Etiqueta, Girando } from '../components/ui'
 import { useNaoLidas } from '../hooks/useMensagens'
 import { biometriaAtiva, pinConfigurado } from '../lib/pin'
 import { useAuth } from '../store/authStore'
@@ -48,11 +48,43 @@ export function Mais() {
   const sair = useAuth((s) => s.sair)
   const modo = useUI((s) => s.modo)
   const alternarTema = useUI((s) => s.alternarTema)
+  const mostrarToast = useUI((s) => s.mostrarToast)
   const naoLidas = useNaoLidas()
   const [confirmarSaida, setConfirmarSaida] = useState(false)
+  const [atualizando, setAtualizando] = useState(false)
 
   const protegido = pinConfigurado()
   const ehAdmin = perfil?.role === 'admin'
+
+  async function atualizarApp() {
+    setAtualizando(true)
+
+    try {
+      if (typeof window.__atualizarPWA === 'function') {
+        await window.__atualizarPWA(true)
+        window.location.reload()
+        return
+      }
+
+      if (!('serviceWorker' in navigator)) {
+        window.location.reload()
+        return
+      }
+
+      const registro = await navigator.serviceWorker.ready
+      await registro.update()
+
+      if (navigator.serviceWorker.controller) {
+        mostrarToast('Atualizando o app…', 'info')
+        window.setTimeout(() => window.location.reload(), 500)
+      } else {
+        window.location.reload()
+      }
+    } catch {
+      setAtualizando(false)
+      mostrarToast('Não foi possível verificar a atualização.', 'erro')
+    }
+  }
 
   return (
     <>
@@ -194,6 +226,27 @@ export function Mais() {
               Modo {modo === 'escuro' ? 'escuro' : 'claro'}
             </span>
             <span className="text-xs text-slate-500 dark:text-slate-400">tocar para trocar</span>
+          </button>
+        </Cartao>
+
+        <Cartao className="p-0">
+          <button
+            onClick={atualizarApp}
+            disabled={atualizando}
+            className="flex w-full items-center gap-3 rounded-2xl px-4 py-3 transition-colors
+              active:bg-slate-100 disabled:cursor-wait disabled:opacity-60
+              dark:active:bg-slate-800"
+          >
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+              {atualizando ? <Girando /> : <Icone nome="repetir" tamanho={18} />}
+            </span>
+            <span className="flex-1 text-left">
+              <span className="block text-sm font-medium">Atualização</span>
+              <span className="block text-xs text-slate-500 dark:text-slate-400">
+                {atualizando ? 'Verificando novas alterações…' : 'Baixar a versão mais recente'}
+              </span>
+            </span>
+            <Icone nome="direita" tamanho={18} className="shrink-0 text-slate-400" />
           </button>
         </Cartao>
 

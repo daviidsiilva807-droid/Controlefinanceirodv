@@ -3,7 +3,15 @@ import { createRoot } from 'react-dom/client'
 import { BrowserRouter } from 'react-router-dom'
 import App from './App'
 import { LimiteDeErro } from './components/LimiteDeErro'
+import { registerSW } from 'virtual:pwa-register'
 import './index.css'
+
+window.__atualizarPWA = registerSW({
+  immediate: true,
+  onOfflineReady() {},
+  onRegistered() {},
+  onRegisterError() {},
+})
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
