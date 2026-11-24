@@ -5,28 +5,38 @@ import { useUI } from '../store/uiStore'
 
 const OPCOES = [
   {
+    id: 'gelo',
+    nome: 'Cinza gelo',
+    descricao: 'Leveza e contraste com azul ardósia e vermelho cereja.',
+    cores: [
+      { cor: '#F1F5F9', proporcao: 60 },
+      { cor: '#475569', proporcao: 30 },
+      { cor: '#C1121F', proporcao: 10 },
+    ],
+  },
+  {
     id: 'verde',
     nome: 'Verde crescimento',
     descricao: 'Equilíbrio e constância para acompanhar suas metas.',
-    cores: ['#052E2B', '#0F766E', '#34D399', '#A7F3D0', '#ECFDF5'],
+    cores: ['#052E2B', '#0F766E', '#34D399', '#A7F3D0', '#ECFDF5'].map((cor) => ({ cor })),
   },
   {
     id: 'vinho',
     nome: 'Vinho champagne',
     descricao: 'Uma paleta quente, elegante e com presença.',
-    cores: ['#1F0D12', '#5B1A2B', '#9F2D45', '#E7C6CF', '#FFF5F7'],
+    cores: ['#1F0D12', '#5B1A2B', '#9F2D45', '#E7C6CF', '#FFF5F7'].map((cor) => ({ cor })),
   },
   {
     id: 'azul',
     nome: 'Azul amanhecer',
     descricao: 'Clareza e tranquilidade para suas decisões financeiras.',
-    cores: ['#061A24', '#0B3A53', '#0FA3B1', '#B5E2FA', '#F3FAFF'],
+    cores: ['#061A24', '#0B3A53', '#0FA3B1', '#B5E2FA', '#F3FAFF'].map((cor) => ({ cor })),
   },
   {
     id: 'neon',
     nome: 'Dashboard neon',
     descricao: 'Contraste forte, painéis escuros e energia para agir.',
-    cores: ['#0B0D0F', '#20242A', '#00D77B', '#B8FF3D', '#F3F7ED'],
+    cores: ['#0B0D0F', '#20242A', '#00D77B', '#B8FF3D', '#F3F7ED'].map((cor) => ({ cor })),
   },
 ]
 
@@ -68,12 +78,12 @@ export function Temas() {
                     </span>
                   </div>
                   <span className="mt-4 flex h-12 overflow-hidden rounded-xl border border-black/5 shadow-inner dark:border-white/5">
-                    {opcao.cores.map((cor) => (
-                      <span key={cor} className="flex-1" style={{ backgroundColor: cor }} />
+                    {opcao.cores.map(({ cor, proporcao }) => (
+                      <span key={cor} className="min-w-0 flex-1" style={{ backgroundColor: cor, flexBasis: proporcao ? `${proporcao}%` : undefined }} />
                     ))}
                   </span>
                   <span className="mt-2 flex justify-between text-[10px] font-medium text-slate-400 dark:text-slate-500">
-                    {opcao.cores.map((cor) => <span key={cor}>{cor}</span>)}
+                    {opcao.cores.map(({ cor }) => <span key={cor}>{cor}</span>)}
                   </span>
                 </button>
               )

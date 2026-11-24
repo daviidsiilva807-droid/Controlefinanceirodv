@@ -120,18 +120,9 @@ function roundedRect(x0, y0, w, h, radius) {
 
 // --------------------------------------------------------------------- arte
 
-const BG_TOP = [16, 185, 129] // emerald-500
-const BG_BOTTOM = [5, 122, 85] // emerald-700 puxado para o escuro
-const WHITE = [255, 255, 255]
-
-const gradient = (h) => (_x, y) => {
-  const t = y / h
-  return [
-    Math.round(BG_TOP[0] + (BG_BOTTOM[0] - BG_TOP[0]) * t),
-    Math.round(BG_TOP[1] + (BG_BOTTOM[1] - BG_TOP[1]) * t),
-    Math.round(BG_TOP[2] + (BG_BOTTOM[2] - BG_TOP[2]) * t),
-  ]
-}
+const ICE = [241, 245, 249] // cinza gelo
+const SLATE = [71, 85, 105] // azul ardósia
+const CHERRY = [193, 18, 31] // vermelho cereja
 
 /**
  * Desenha o símbolo do app: três barras crescentes (o gráfico de gastos) com
@@ -148,7 +139,7 @@ function drawGlyph(canvas, ox, oy, size) {
   heights.forEach((barH, i) => {
     const x = ox + i * (barW + gap)
     const y = oy + size - barH
-    canvas.fillShape(roundedRect(x, y, barW, barH, radius), WHITE)
+    canvas.fillShape(roundedRect(x, y, barW, barH, radius), SLATE)
   })
 
   // Seta de tendência: um segmento diagonal com ponta, acima das barras.
@@ -157,9 +148,9 @@ function drawGlyph(canvas, ox, oy, size) {
   const ay = oy + 34 * u
   const bx = ox + size - 12 * u
   const by = oy + 2 * u
-  canvas.fillShape(segment(ax, ay, bx, by, thickness / 2), WHITE)
-  canvas.fillShape(segment(bx, by, bx - 20 * u, by + 2 * u, thickness / 2), WHITE)
-  canvas.fillShape(segment(bx, by, bx - 2 * u, by + 20 * u, thickness / 2), WHITE)
+  canvas.fillShape(segment(ax, ay, bx, by, thickness / 2), CHERRY)
+  canvas.fillShape(segment(bx, by, bx - 20 * u, by + 2 * u, thickness / 2), CHERRY)
+  canvas.fillShape(segment(bx, by, bx - 2 * u, by + 20 * u, thickness / 2), CHERRY)
 }
 
 /** Distância com sinal para um segmento de reta de espessura `r` (cápsula). */
@@ -178,11 +169,11 @@ function makeIcon(size, { maskable = false } = {}) {
   if (maskable) {
     // Android recorta a imagem: o fundo precisa sangrar até a borda e o
     // símbolo ficar dentro da "safe zone" central (80% do lado).
-    canvas.fillShape(() => -1, gradient(size))
+    canvas.fillShape(() => -1, ICE)
     const glyph = size * 0.46
     drawGlyph(canvas, (size - glyph) / 2, (size - glyph) / 2, glyph)
   } else {
-    canvas.fillShape(roundedRect(0, 0, size, size, size * 0.22), gradient(size))
+    canvas.fillShape(roundedRect(0, 0, size, size, size * 0.22), ICE)
     const glyph = size * 0.56
     drawGlyph(canvas, (size - glyph) / 2, (size - glyph) / 2, glyph)
   }
@@ -191,10 +182,10 @@ function makeIcon(size, { maskable = false } = {}) {
 
 function makeSplash(width, height) {
   const canvas = new Canvas(width, height)
-  canvas.fillShape(() => -1, [15, 23, 42]) // slate-900, igual ao background_color
+  canvas.fillShape(() => -1, ICE)
   const box = Math.min(width, height) * 0.3
   const canvasIcon = new Canvas(Math.round(box), Math.round(box))
-  canvasIcon.fillShape(roundedRect(0, 0, box, box, box * 0.22), gradient(box))
+  canvasIcon.fillShape(roundedRect(0, 0, box, box, box * 0.22), ICE)
   const glyph = box * 0.56
   drawGlyph(canvasIcon, (box - glyph) / 2, (box - glyph) / 2, glyph)
 

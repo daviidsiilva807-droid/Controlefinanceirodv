@@ -3,13 +3,13 @@ import { chaveMes } from '../lib/dates'
 
 const CHAVE_TEMA = 'cf.tema'
 const CHAVE_MODO = 'cf.modo'
-const TEMAS = ['verde', 'vinho', 'azul', 'neon']
+const TEMAS = ['gelo', 'verde', 'vinho', 'azul', 'neon']
 
 function preferenciasIniciais() {
   const temaSalvo = localStorage.getItem(CHAVE_TEMA)
   const modoSalvo = localStorage.getItem(CHAVE_MODO)
   return {
-    tema: TEMAS.includes(temaSalvo) ? temaSalvo : 'verde',
+    tema: TEMAS.includes(temaSalvo) ? temaSalvo : 'gelo',
     modo: modoSalvo === 'claro' || modoSalvo === 'escuro'
       ? modoSalvo
       : window.matchMedia('(prefers-color-scheme: light)').matches
@@ -19,7 +19,7 @@ function preferenciasIniciais() {
 }
 
 function aplicarTema(tema, modo) {
-  document.documentElement.classList.remove('tema-verde', 'tema-vinho', 'tema-azul', 'tema-neon')
+  document.documentElement.classList.remove('tema-gelo', 'tema-verde', 'tema-vinho', 'tema-azul', 'tema-neon')
   document.documentElement.classList.add(`tema-${tema}`)
   document.documentElement.classList.toggle('dark', modo === 'escuro')
   document
@@ -28,7 +28,9 @@ function aplicarTema(tema, modo) {
       'content',
       modo === 'escuro'
         ? '#020617'
-        : tema === 'vinho'
+        : tema === 'gelo'
+          ? '#475569'
+          : tema === 'vinho'
           ? '#9F2D45'
           : tema === 'azul'
             ? '#0FA3B1'
@@ -39,7 +41,7 @@ function aplicarTema(tema, modo) {
 }
 
 export const useUI = create((set, get) => ({
-  tema: 'verde',
+  tema: 'gelo',
   modo: 'escuro',
   // Mês em foco no app inteiro: dashboard, lista, orçamentos e cartões
   // andam juntos, então o estado é um só.
