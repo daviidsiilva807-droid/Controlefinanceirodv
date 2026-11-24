@@ -1,6 +1,7 @@
 import { useCallback, useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { Cabecalho } from '../components/AppShell'
+import { BannersInicio } from '../components/BannersInicio'
 import { Icone } from '../components/Icone'
 import { ItemLancamento } from '../components/ItemLancamento'
 import { SeletorMes } from '../components/SeletorMes'
@@ -13,6 +14,7 @@ import { useOrcamentos } from '../hooks/useOrcamentos'
 import { useMaterializarRecorrentes } from '../hooks/useRecorrentes'
 import { useSaldos } from '../hooks/useSaldos'
 import { useTransacoes } from '../hooks/useTransacoes'
+import { useCotacaoDolar } from '../hooks/useCotacaoDolar'
 import { chaveMes, diasAte } from '../lib/dates'
 import { formatBRL } from '../lib/money'
 import { lerDesafios, percentualDesafio, totalConcluido } from '../lib/desafios'
@@ -32,6 +34,7 @@ export function Inicio() {
   const { faturas, totalGeral: totalFaturas } = useFatura(mes)
   const { totalMensal: totalAssinaturas } = useAssinaturas()
   const { emprestimos } = useEmprestimos()
+  const cotacaoDolar = useCotacaoDolar()
 
   const aoCriarRecorrentes = useCallback(
     (quantidade) =>
@@ -64,6 +67,13 @@ export function Inicio() {
       </Cabecalho>
 
       <div className="space-y-5 p-4">
+        <BannersInicio
+          {...cotacaoDolar}
+          saldo={saldoEmContas}
+          faturas={totalFaturas}
+          despesas={resumo.despesas}
+        />
+
         {/* -------------------------------------------------- resumo do mês */}
         <Cartao className="bg-gradient-to-br from-brand-600 to-brand-800 text-white dark:border-brand-900">
           <p className="text-xs text-brand-100">Sobrou no mês</p>

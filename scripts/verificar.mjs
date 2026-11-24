@@ -14,6 +14,7 @@ import {
   calcularOrcamentos,
   projetarGasto,
 } from '../src/lib/resumo.js'
+import { formatarDataCotacao, montarUrlCotacoes, selecionarCotacao } from '../src/lib/dolar.js'
 
 let passou = 0
 const teste = (nome, fn) => {
@@ -130,6 +131,27 @@ teste('níveis de alerta viram em 80% e em 100%', () => {
 teste('projeção usa o ritmo do mês e se cala quando é cedo demais', () => {
   assert.equal(projetarGasto(10000, new Date(2026, 6, 10)), 31000)
   assert.equal(projetarGasto(10000, new Date(2026, 6, 1)), null)
+})
+
+console.log('\nCotação do dólar')
+teste('consulta período recente da API PTAX usando datas locais', () => {
+  const url = montarUrlCotacoes(new Date(2026, 10, 24))
+  assert.ok(url.includes("@dataInicial='11-17-2026'"))
+  assert.ok(url.includes("@dataFinalCotacao='11-24-2026'"))
+})
+teste('usa a cotação de fechamento mais recente e formata a data', () => {
+  const cotacao = selecionarCotacao({
+    value: [
+      { cotacaoVenda: 5.2, dataHoraCotacao: '2026-11-23 13:00:00.000', tipoBoletim: 'Fechamento' },
+      { cotacaoVenda: 5.1, dataHoraCotacao: '2026-11-24 10:00:00.000', tipoBoletim: 'Abertura' },
+      { cotacaoVenda: 5.3, dataHoraCotacao: '2026-11-24 13:00:00.000', tipoBoletim: 'Fechamento' },
+    ],
+  })
+  assert.deepEqual(cotacao, { valor: 5.3, data: '2026-11-24' })
+  assert.equal(formatarDataCotacao(cotacao.data), '24/11/2026')
+})
+teste('resposta sem cotações válidas é reportada como erro', () => {
+  assert.throws(() => selecionarCotacao({ value: [] }), /Nenhuma cotação válida/)
 })
 
 console.log(`\n${passou} verificações passaram.\n`)
